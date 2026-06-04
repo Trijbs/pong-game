@@ -3,7 +3,7 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const resolutionInfo = document.getElementById('resolutionInfo');
 const playerScoreDisplay = document.getElementById('playerScore');
-const aiScoreDisplay = document.getElementById('aiScore');
+const ScoreDisplay = document.getElementById('Score');
 const highestScoreDisplay = document.getElementById('highestScore');
 const resetBtn = document.getElementById('resetBtn');
 const pauseBtn = document.getElementById('pauseBtn');
@@ -19,7 +19,7 @@ const PADDLE_MARGIN = 20;
 const PADDLE_SPEED = 6;
 const BALL_SPEED = 5;
 const MAX_BALL_SPEED = 10;
-const AI_SPEED = 4;
+const SPEED = 4;
 
 // Game state
 let gameState = {
@@ -32,7 +32,7 @@ let gameState = {
     ballPrevX: CANVAS_WIDTH / 2,
     ballPrevY: CANVAS_HEIGHT / 2,
     playerScore: 0,
-    aiScore: 0
+    Score: 0
 };
 
 // Pause state
@@ -74,9 +74,9 @@ pauseBtn.addEventListener('click', togglePause);
 // Reset button
 resetBtn.addEventListener('click', () => {
     gameState.playerScore = 0;
-    gameState.aiScore = 0;
+    gameState.Score = 0;
     playerScoreDisplay.textContent = '0';
-    aiScoreDisplay.textContent = '0';
+    ScoreDisplay.textContent = '0';
     gameState.playerY = CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2;
     gameState.aiY = CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2;
     resetBall();
@@ -86,7 +86,7 @@ resetBtn.addEventListener('click', () => {
 
 // Update high score
 function updateHighScore() {
-    const currentMax = Math.max(gameState.playerScore, gameState.aiScore);
+    const currentMax = Math.max(gameState.playerScore, gameState.Score);
     if (currentMax > highestScore) {
         highestScore = currentMax;
         localStorage.setItem('pongHighScore', highestScore);
@@ -180,15 +180,15 @@ function update() {
     const aiCenter = gameState.aiY + PADDLE_HEIGHT / 2;
     const deadzone = PADDLE_HEIGHT * 0.3;
     if (gameState.ballY < aiCenter - deadzone) {
-        gameState.aiY = Math.max(0, gameState.aiY - AI_SPEED);
+        gameState.aiY = Math.max(0, gameState.aiY - SPEED);
     } else if (gameState.ballY > aiCenter + deadzone) {
-        gameState.aiY = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, gameState.aiY + AI_SPEED);
+        gameState.aiY = Math.min(CANVAS_HEIGHT - PADDLE_HEIGHT, gameState.aiY + SPEED);
     }
 
     // Scoring
     if (gameState.ballX < -BALL_SIZE) {
-        gameState.aiScore++;
-        aiScoreDisplay.textContent = gameState.aiScore;
+        gameState.Score++;
+        ScoreDisplay.textContent = gameState.Score;
         updateHighScore();
         resetBall();
     }
