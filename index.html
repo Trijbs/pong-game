@@ -39,6 +39,7 @@
             backdrop-filter: blur(10px);
             width: 100%;
             justify-content: center;
+            position: relative;
         }
 
         .score {
@@ -59,6 +60,37 @@
             text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
         }
 
+        .highest-score {
+            position: absolute;
+            right: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            text-align: right;
+            color: white;
+        }
+
+        .highest-score h3 {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 5px;
+            opacity: 0.8;
+        }
+
+        .highest-score p {
+            font-size: 32px;
+            font-weight: bold;
+            color: #ff6b9d;
+            text-shadow: 0 0 10px rgba(255, 107, 157, 0.5);
+            margin: 0;
+        }
+
+        .game-wrapper {
+            position: relative;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+
         #gameCanvas {
             border: 3px solid #e94560;
             background: linear-gradient(to right, #1a1a2e, #0f3460);
@@ -69,6 +101,32 @@
             display: block;
         }
 
+        .pause-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            border-radius: 5px;
+        }
+
+        .pause-overlay.active {
+            display: flex;
+        }
+
+        .pause-text {
+            font-size: 72px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);
+            letter-spacing: 8px;
+        }
+
         .controls {
             text-align: center;
             color: white;
@@ -77,14 +135,24 @@
             border-radius: 10px;
             backdrop-filter: blur(10px);
             width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
 
         .controls p {
-            margin-bottom: 10px;
+            margin: 0;
             font-size: 14px;
         }
 
-        .reset-btn {
+        .buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
             padding: 10px 25px;
             font-size: 14px;
             background: linear-gradient(135deg, #667eea, #764ba2);
@@ -96,13 +164,17 @@
             font-weight: bold;
         }
 
-        .reset-btn:hover {
+        .btn:hover {
             transform: scale(1.05);
             box-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
         }
 
-        .reset-btn:active {
+        .btn:active {
             transform: scale(0.95);
+        }
+
+        .btn.pause {
+            background: linear-gradient(135deg, #ff6b6b, #ee5a6f);
         }
 
         .info {
@@ -123,14 +195,26 @@
                 <h2>Computer</h2>
                 <p id="aiScore">0</p>
             </div>
+            <div class="highest-score">
+                <h3>Highest Score</h3>
+                <p id="highestScore">0</p>
+            </div>
         </div>
 
-        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        <div class="game-wrapper">
+            <canvas id="gameCanvas" width="800" height="400"></canvas>
+            <div class="pause-overlay" id="pauseOverlay">
+                <div class="pause-text">PAUSED</div>
+            </div>
+        </div>
 
         <div class="controls">
-            <p>Controls: Arrow Keys ↑↓ or W/S</p>
-            <button id="resetBtn" class="reset-btn">Reset Game</button>
-            <div class="info">Resolution: <span id="resolutionInfo">Loading...</span></div>
+            <p>Controls: Arrow Keys ↑↓ or W/S | Spacebar to Pause</p>
+            <div class="buttons">
+                <button id="pauseBtn" class="btn pause">Pause</button>
+                <button id="resetBtn" class="btn">Reset Game</button>
+            </div>
+            <div class="info">Resolution: <span id="resolutionInfo">800x400</span></div>
         </div>
     </div>
 
