@@ -4,10 +4,9 @@ const GAME_HEIGHT = 400;
 const PADDLE_WIDTH = 10;
 const PADDLE_HEIGHT = 80;
 const BALL_SIZE = 15;
-const PADDLE_SPEED = 7;
-const INITIAL_BALL_SPEED = 5;
-const MAX_BALL_SPEED = 9;
-const AI_SPEED = 3.5; // Reduced from 5 to make AI easier
+const PADDLE_SPEED = 8;
+const BALL_SPEED = 6;
+const AI_SPEED = 4;
 
 // Game Objects
 const gameContainer = document.getElementById('gameContainer');
@@ -20,160 +19,126 @@ const resetBtn = document.getElementById('resetBtn');
 
 // Game State
 let gameState = {
-    ballX: GAME_WIDTH / 2 - BALL_SIZE / 2,
-    ballY: GAME_HEIGHT / 2 - BALL_SIZE / 2,
-    ballSpeedX: INITIAL_BALL_SPEED,
-    ballSpeedY: INITIAL_BALL_SPEED,
+    ballX: GAME_WIDTH / 2,
+    ballY: GAME_HEIGHT / 2,
+    ballSpeedX: BALL_SPEED,
+    ballSpeedY: BALL_SPEED,
     playerY: GAME_HEIGHT / 2 - PADDLE_HEIGHT / 2,
     aiY: GAME_HEIGHT / 2 - PADDLE_HEIGHT / 2,
     playerScore: 0,
-    aiScore: 0,
-    gameRunning: true
+    aiScore: 0
 };
 
-// Input tracking
-const keys = {
-    arrowUp: false,
-    arrowDown: false,
-    mouseY: GAME_HEIGHT / 2
-};
+// Input tracking - SIMPLE BOOLEAN FLAGS
+let upPressed = false;
+let downPressed = false;
 
-// Event Listeners
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowUp') {
-        keys.arrowUp = true;
+// Event Listeners - SIMPLE AND DIRECT
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        upPressed = true;
         e.preventDefault();
     }
-    if (e.key === 'ArrowDown') {
-        keys.arrowDown = true;
+    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        downPressed = true;
         e.preventDefault();
     }
 });
 
-document.addEventListener('keyup', (e) => {
-    if (e.key === 'ArrowUp') keys.arrowUp = false;
-    if (e.key === 'ArrowDown') keys.arrowDown = false;
+window.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+        upPressed = false;
+    }
+    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+        downPressed = false;
+    }
 });
 
 gameContainer.addEventListener('mousemove', (e) => {
     const rect = gameContainer.getBoundingClientRect();
-    keys.mouseY = e.clientY - rect.top;
+    const mouseY = e.clientY - rect.top;
+    
+    // Smooth mouse following
+    const paddleCenter = gameState.playerY + PADDLE_HEIGHT / 2;
+    
+    if (mouseY < paddleCenter - 5) {
+        gameState.playerY = Math.max(0, gameState.playerY - PADDLE_SPEED);
+    } else if (mouseY > paddleCenter + 5) {
+        gameState.playerY = Math.min(GAME_HEIGHT - PADDLE_HEIGHT, gameState.playerY + PADDLE_SPEED);
+    }
 });
 
 resetBtn.addEventListener('click', resetGame);
 
 // Game Functions
 function update() {
+    // KEYBOARD CONTROLS - ARROW KEYS (Primary Control)
+    if (upPressed) {
+        gameState.playerY = Math.max(0, gameState.playerY - PADDLE_SPEED);
+    }
+    if (downPressed) {
+        gameState.playerY = Math.min(GAME_HEIGHT - PADDLE_HEIGHT, gameState.playerY + PADDLE_SPEED);
+    }
+
     // Update ball position
     gameState.ballX += gameState.ballSpeedX;
     gameState.ballY += gameState.ballSpeedY;
 
-    // Wall collision (top and bottom) - with better boundary handling
-    if (gameState.ballY <= 0) {
-        gameState.ballY = 0;
-        gameState.ballSpeedY = Math.abs(gameState.ballSpeedY);
-    }
-    if (gameState.ballY + BALL_SIZE >= GAME_HEIGHT) {
-        gameState.ballY = GAME_HEIGHT - BALL_SIZE;
-        gameState.ballSpeedY = -Math.abs(gameState.ballSpeedY);
+    // Top and bottom wall collisions
+    if (gameState.ballY - BALL_SIZE / 2 <= 0 || gameState.ballY + BALL_SIZE / 2 >= GAME_HEIGHT) {
+        gameState.ballSpeedY *= -1;
+        gameState.ballY = Math.max(BALL_SIZE / 2, Math.min(GAME_HEIGHT - BALL_SIZE / 2, gameState.ballY));
     }
 
-    // Player paddle movement (keyboard) - improved responsiveness
-    if (keys.arrowUp) {
-        gameState.playerY = Math.max(0, gameState.playerY - PADDLE_SPEED);
-    }
-    if (keys.arrowDown) {
-        gameState.playerY = Math.min(GAME_HEIGHT - PADDLE_HEIGHT, gameState.playerY + PADDLE_SPEED);
-    }
-
-    // Player paddle movement (mouse) - smooth following
-    const playerCenter = gameState.playerY + PADDLE_HEIGHT / 2;
-    const mouseDistance = keys.mouseY - playerCenter;
+    // Player paddle collision (left side)
+    const playerPaddleX = 20;
+    const playerCollision = checkCollision(
+        gameState.ballX, gameState.ballY, BALL_SIZE,
+        playerPaddleX, gameState.playerY, PADDLE_WIDTH, PADDLE_HEIGHT
+    );
     
-    if (Math.abs(mouseDistance) > 2) {
-        if (mouseDistance < 0) {
-            gameState.playerY = Math.max(0, gameState.playerY - PADDLE_SPEED);
-        } else {
-            gameState.playerY = Math.min(GAME_HEIGHT - PADDLE_HEIGHT, gameState.playerY + PADDLE_SPEED);
-        }
+    if (playerCollision && gameState.ballSpeedX < 0) {
+        gameState.ballSpeedX = Math.abs(gameState.ballSpeedX) * 1.02; // Slight speed increase
+        gameState.ballX = playerPaddleX + PADDLE_WIDTH + BALL_SIZE / 2;
+        
+        // Add angle based on where ball hits paddle
+        const hitPos = (gameState.ballY - (gameState.playerY + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
+        gameState.ballSpeedY += hitPos * 3;
     }
 
-    // AI paddle movement - with reduced difficulty and some imperfection
+    // AI paddle collision (right side)
+    const aiPaddleX = GAME_WIDTH - 20 - PADDLE_WIDTH;
+    const aiCollision = checkCollision(
+        gameState.ballX, gameState.ballY, BALL_SIZE,
+        aiPaddleX, gameState.aiY, PADDLE_WIDTH, PADDLE_HEIGHT
+    );
+    
+    if (aiCollision && gameState.ballSpeedX > 0) {
+        gameState.ballSpeedX = -Math.abs(gameState.ballSpeedX) * 1.02; // Slight speed increase
+        gameState.ballX = aiPaddleX - BALL_SIZE / 2;
+        
+        // Add angle based on where ball hits paddle
+        const hitPos = (gameState.ballY - (gameState.aiY + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
+        gameState.ballSpeedY += hitPos * 3;
+    }
+
+    // AI MOVEMENT - Simple and effective
     const aiCenter = gameState.aiY + PADDLE_HEIGHT / 2;
-    const ballCenter = gameState.ballY + BALL_SIZE / 2;
-    const aiDistance = ballCenter - aiCenter;
+    const ballCenter = gameState.ballY;
     
-    // Add some randomness to make AI miss occasionally
-    const aiImperfection = (Math.random() - 0.5) * 15;
-    const targetPosition = ballCenter + aiImperfection;
-    const targetDistance = targetPosition - aiCenter;
-    
-    if (Math.abs(targetDistance) > AI_SPEED) {
-        if (targetDistance < 0) {
-            gameState.aiY = Math.max(0, gameState.aiY - AI_SPEED);
-        } else {
-            gameState.aiY = Math.min(GAME_HEIGHT - PADDLE_HEIGHT, gameState.aiY + AI_SPEED);
-        }
+    // Add some randomness so AI isn't perfect
+    if (ballCenter < aiCenter - 10) {
+        gameState.aiY = Math.max(0, gameState.aiY - AI_SPEED);
+    } else if (ballCenter > aiCenter + 10) {
+        gameState.aiY = Math.min(GAME_HEIGHT - PADDLE_HEIGHT, gameState.aiY + AI_SPEED);
     }
 
-    // Player paddle collision - improved detection
-    if (gameState.ballSpeedX < 0) { // Ball moving left towards player
-        const paddleX = 20;
-        if (
-            gameState.ballX < paddleX + PADDLE_WIDTH + 5 &&
-            gameState.ballX + BALL_SIZE > paddleX - 5 &&
-            gameState.ballY < gameState.playerY + PADDLE_HEIGHT &&
-            gameState.ballY + BALL_SIZE > gameState.playerY
-        ) {
-            gameState.ballX = paddleX + PADDLE_WIDTH;
-            gameState.ballSpeedX = Math.abs(gameState.ballSpeedX);
-            
-            // Add spin based on where ball hits paddle
-            const hitPos = (gameState.ballY + BALL_SIZE / 2 - gameState.playerY) / PADDLE_HEIGHT;
-            gameState.ballSpeedY = (hitPos - 0.5) * 6;
-            
-            // Increase ball speed slightly
-            const speed = Math.sqrt(gameState.ballSpeedX ** 2 + gameState.ballSpeedY ** 2);
-            if (speed < MAX_BALL_SPEED) {
-                const speedIncrease = Math.min(speed + 0.3, MAX_BALL_SPEED);
-                gameState.ballSpeedX = (gameState.ballSpeedX / speed) * speedIncrease;
-                gameState.ballSpeedY = (gameState.ballSpeedY / speed) * speedIncrease;
-            }
-        }
-    }
-
-    // AI paddle collision - improved detection
-    if (gameState.ballSpeedX > 0) { // Ball moving right towards AI
-        const paddleX = GAME_WIDTH - 20 - PADDLE_WIDTH;
-        if (
-            gameState.ballX + BALL_SIZE > paddleX - 5 &&
-            gameState.ballX < paddleX + PADDLE_WIDTH + 5 &&
-            gameState.ballY < gameState.aiY + PADDLE_HEIGHT &&
-            gameState.ballY + BALL_SIZE > gameState.aiY
-        ) {
-            gameState.ballX = paddleX - BALL_SIZE;
-            gameState.ballSpeedX = -Math.abs(gameState.ballSpeedX);
-            
-            // Add spin based on where ball hits paddle
-            const hitPos = (gameState.ballY + BALL_SIZE / 2 - gameState.aiY) / PADDLE_HEIGHT;
-            gameState.ballSpeedY = (hitPos - 0.5) * 6;
-            
-            // Increase ball speed slightly
-            const speed = Math.sqrt(gameState.ballSpeedX ** 2 + gameState.ballSpeedY ** 2);
-            if (speed < MAX_BALL_SPEED) {
-                const speedIncrease = Math.min(speed + 0.3, MAX_BALL_SPEED);
-                gameState.ballSpeedX = (gameState.ballSpeedX / speed) * speedIncrease;
-                gameState.ballSpeedY = (gameState.ballSpeedY / speed) * speedIncrease;
-            }
-        }
-    }
-
-    // Scoring - prevent ball from getting stuck
-    if (gameState.ballX < -20) {
+    // Scoring - Ball goes out of bounds
+    if (gameState.ballX < -50) {
         gameState.aiScore++;
         resetBall();
     }
-    if (gameState.ballX > GAME_WIDTH + 20) {
+    if (gameState.ballX > GAME_WIDTH + 50) {
         gameState.playerScore++;
         resetBall();
     }
@@ -181,15 +146,23 @@ function update() {
     updateDisplay();
 }
 
+function checkCollision(ballX, ballY, ballSize, paddleX, paddleY, paddleWidth, paddleHeight) {
+    return ballX - ballSize / 2 < paddleX + paddleWidth &&
+           ballX + ballSize / 2 > paddleX &&
+           ballY - ballSize / 2 < paddleY + paddleHeight &&
+           ballY + ballSize / 2 > paddleY;
+}
+
 function resetBall() {
-    gameState.ballX = GAME_WIDTH / 2 - BALL_SIZE / 2;
-    gameState.ballY = GAME_HEIGHT / 2 - BALL_SIZE / 2;
+    gameState.ballX = GAME_WIDTH / 2;
+    gameState.ballY = GAME_HEIGHT / 2;
     
-    const angle = (Math.random() - 0.5) * (Math.PI / 4);
+    // Random direction and angle
+    const angle = (Math.random() - 0.5) * 0.5;
     const direction = Math.random() > 0.5 ? 1 : -1;
     
-    gameState.ballSpeedX = direction * INITIAL_BALL_SPEED * Math.cos(angle);
-    gameState.ballSpeedY = INITIAL_BALL_SPEED * Math.sin(angle);
+    gameState.ballSpeedX = direction * BALL_SPEED;
+    gameState.ballSpeedY = angle * BALL_SPEED;
 }
 
 function resetGame() {
@@ -202,11 +175,11 @@ function resetGame() {
 }
 
 function updateDisplay() {
-    // Update ball position
-    ball.style.left = gameState.ballX + 'px';
-    ball.style.top = gameState.ballY + 'px';
+    // Update ball
+    ball.style.left = (gameState.ballX - BALL_SIZE / 2) + 'px';
+    ball.style.top = (gameState.ballY - BALL_SIZE / 2) + 'px';
 
-    // Update paddle positions
+    // Update paddles
     playerPaddle.style.top = gameState.playerY + 'px';
     aiPaddle.style.top = gameState.aiY + 'px';
 
@@ -215,15 +188,13 @@ function updateDisplay() {
     aiScoreDisplay.textContent = gameState.aiScore;
 }
 
-// Game loop
+// Main game loop
 function gameLoop() {
-    if (gameState.gameRunning) {
-        update();
-    }
+    update();
     requestAnimationFrame(gameLoop);
 }
 
-// Initialize and start game
+// Start game
 resetBall();
 updateDisplay();
 gameLoop();
