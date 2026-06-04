@@ -29,31 +29,46 @@ let gameState = {
     aiScore: 0
 };
 
-// Input tracking - SIMPLE BOOLEAN FLAGS
+// Input tracking - GLOBAL VARIABLES
 let upPressed = false;
 let downPressed = false;
 
-// Event Listeners - SIMPLE AND DIRECT
-window.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+// Event Listeners - DOCUMENT LEVEL for global keyboard capture
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp') {
         upPressed = true;
         e.preventDefault();
     }
-    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+    if (e.key === 'ArrowDown') {
         downPressed = true;
         e.preventDefault();
     }
-});
+    if (e.key.toLowerCase() === 'w') {
+        upPressed = true;
+        e.preventDefault();
+    }
+    if (e.key.toLowerCase() === 's') {
+        downPressed = true;
+        e.preventDefault();
+    }
+}, true); // Use capture phase for guaranteed capture
 
-window.addEventListener('keyup', (e) => {
-    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+document.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowUp') {
         upPressed = false;
     }
-    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+    if (e.key === 'ArrowDown') {
         downPressed = false;
     }
-});
+    if (e.key.toLowerCase() === 'w') {
+        upPressed = false;
+    }
+    if (e.key.toLowerCase() === 's') {
+        downPressed = false;
+    }
+}, true); // Use capture phase for guaranteed capture
 
+// Mouse control
 gameContainer.addEventListener('mousemove', (e) => {
     const rect = gameContainer.getBoundingClientRect();
     const mouseY = e.clientY - rect.top;
@@ -70,9 +85,9 @@ gameContainer.addEventListener('mousemove', (e) => {
 
 resetBtn.addEventListener('click', resetGame);
 
-// Game Functions
+// Main update function
 function update() {
-    // KEYBOARD CONTROLS - ARROW KEYS (Primary Control)
+    // KEYBOARD CONTROLS - DIRECT VARIABLE CHECK
     if (upPressed) {
         gameState.playerY = Math.max(0, gameState.playerY - PADDLE_SPEED);
     }
@@ -92,13 +107,11 @@ function update() {
 
     // Player paddle collision (left side)
     const playerPaddleX = 20;
-    const playerCollision = checkCollision(
+    if (checkCollision(
         gameState.ballX, gameState.ballY, BALL_SIZE,
         playerPaddleX, gameState.playerY, PADDLE_WIDTH, PADDLE_HEIGHT
-    );
-    
-    if (playerCollision && gameState.ballSpeedX < 0) {
-        gameState.ballSpeedX = Math.abs(gameState.ballSpeedX) * 1.02; // Slight speed increase
+    ) && gameState.ballSpeedX < 0) {
+        gameState.ballSpeedX = Math.abs(gameState.ballSpeedX) * 1.05;
         gameState.ballX = playerPaddleX + PADDLE_WIDTH + BALL_SIZE / 2;
         
         // Add angle based on where ball hits paddle
@@ -108,13 +121,11 @@ function update() {
 
     // AI paddle collision (right side)
     const aiPaddleX = GAME_WIDTH - 20 - PADDLE_WIDTH;
-    const aiCollision = checkCollision(
+    if (checkCollision(
         gameState.ballX, gameState.ballY, BALL_SIZE,
         aiPaddleX, gameState.aiY, PADDLE_WIDTH, PADDLE_HEIGHT
-    );
-    
-    if (aiCollision && gameState.ballSpeedX > 0) {
-        gameState.ballSpeedX = -Math.abs(gameState.ballSpeedX) * 1.02; // Slight speed increase
+    ) && gameState.ballSpeedX > 0) {
+        gameState.ballSpeedX = -Math.abs(gameState.ballSpeedX) * 1.05;
         gameState.ballX = aiPaddleX - BALL_SIZE / 2;
         
         // Add angle based on where ball hits paddle
@@ -122,18 +133,17 @@ function update() {
         gameState.ballSpeedY += hitPos * 3;
     }
 
-    // AI MOVEMENT - Simple and effective
+    // AI MOVEMENT
     const aiCenter = gameState.aiY + PADDLE_HEIGHT / 2;
     const ballCenter = gameState.ballY;
     
-    // Add some randomness so AI isn't perfect
     if (ballCenter < aiCenter - 10) {
         gameState.aiY = Math.max(0, gameState.aiY - AI_SPEED);
     } else if (ballCenter > aiCenter + 10) {
         gameState.aiY = Math.min(GAME_HEIGHT - PADDLE_HEIGHT, gameState.aiY + AI_SPEED);
     }
 
-    // Scoring - Ball goes out of bounds
+    // Scoring
     if (gameState.ballX < -50) {
         gameState.aiScore++;
         resetBall();
@@ -157,7 +167,6 @@ function resetBall() {
     gameState.ballX = GAME_WIDTH / 2;
     gameState.ballY = GAME_HEIGHT / 2;
     
-    // Random direction and angle
     const angle = (Math.random() - 0.5) * 0.5;
     const direction = Math.random() > 0.5 ? 1 : -1;
     
@@ -175,26 +184,25 @@ function resetGame() {
 }
 
 function updateDisplay() {
-    // Update ball
     ball.style.left = (gameState.ballX - BALL_SIZE / 2) + 'px';
     ball.style.top = (gameState.ballY - BALL_SIZE / 2) + 'px';
-
-    // Update paddles
     playerPaddle.style.top = gameState.playerY + 'px';
     aiPaddle.style.top = gameState.aiY + 'px';
-
-    // Update scores
     playerScoreDisplay.textContent = gameState.playerScore;
     aiScoreDisplay.textContent = gameState.aiScore;
 }
 
-// Main game loop
 function gameLoop() {
     update();
     requestAnimationFrame(gameLoop);
 }
 
-// Start game
+// Initialize
 resetBall();
 updateDisplay();
 gameLoop();
+
+// Auto-focus game container on load
+window.addEventListener('load', () => {
+    gameContainer.focus();
+});
