@@ -1,890 +1,259 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PONG // PHOSPHOR</title>
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-<style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pong Game</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
-body {
-  background: #04040c;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  font-family: 'Share Tech Mono', monospace;
-  overflow: hidden;
-  user-select: none;
-  -webkit-user-select: none;
-}
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+            padding: 20px;
+        }
 
-#wrap {
-  position: relative;
-  flex-shrink: 0;
-}
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            width: 100%;
+            max-width: 1000px;
+        }
 
-/* Scanline texture */
-#wrap::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0,0,0,0.13) 2px,
-    rgba(0,0,0,0.13) 4px
-  );
-  pointer-events: none;
-  z-index: 10;
-}
+        /* ── Scoreboard ─────────────────────────────────────── */
+        .scoreboard {
+            display: flex;
+            gap: 60px;
+            background: rgba(255,255,255,0.1);
+            padding: 16px 40px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            width: 100%;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
 
-/* CRT vignette */
-#wrap::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at center,
-    transparent 55%,
-    rgba(0,0,0,0.55) 85%,
-    rgba(0,0,0,0.85) 100%
-  );
-  pointer-events: none;
-  z-index: 11;
-}
+        .score { text-align: center; color: white; }
+        .score h2 { font-size: 16px; margin-bottom: 6px; font-weight: 600; opacity: 0.85; }
+        .score p  { font-size: 44px; font-weight: bold; color: #ffd700; text-shadow: 0 0 10px rgba(255,215,0,0.5); line-height: 1; }
 
-canvas {
-  display: block;
-}
+        /* Reset button — top-right of scoreboard */
+        .reset-corner {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+        }
 
-/* ── Overlay system ─────────────────────────────────────── */
-.ov {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  z-index: 30;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  transform: scale(0.97);
-}
-.ov.on {
-  opacity: 1;
-  pointer-events: all;
-  transform: scale(1);
-}
+        .reset-corner .btn-small {
+            padding: 6px 14px;
+            font-size: 11px;
+            background: rgba(255,255,255,0.15);
+            color: rgba(255,255,255,0.75);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: bold;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+        .reset-corner .btn-small:hover {
+            background: rgba(255,100,100,0.35);
+            border-color: #ff6b6b;
+            color: white;
+        }
 
-/* ── Start screen ────────────────────────────────────────── */
-.ov-bg {
-  position: absolute;
-  inset: 0;
-  background: rgba(4,4,12,0.93);
-}
+        /* Highest score — top-left of scoreboard */
+        .highest-score {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            text-align: left;
+            color: white;
+        }
+        .highest-score h3 { font-size: 10px; font-weight: 600; margin-bottom: 3px; opacity: 0.7; letter-spacing: 0.05em; }
+        .highest-score p  { font-size: 26px; font-weight: bold; color: #ff6b9d; text-shadow: 0 0 10px rgba(255,107,157,0.5); margin: 0; }
 
-.ov > * { position: relative; z-index: 1; }
+        /* ── Canvas ─────────────────────────────────────────── */
+        .game-wrapper {
+            position: relative;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+        }
 
-.big-title {
-  font-size: clamp(2.2rem, 7vw, 5rem);
-  color: #00e8d8;
-  text-shadow: 0 0 18px #00e8d8, 0 0 40px #00b8a9, 0 0 80px rgba(0,184,169,0.4);
-  letter-spacing: 0.25em;
-  margin-bottom: 0.15em;
-}
-.byline {
-  font-size: clamp(0.55rem, 1.5vw, 0.8rem);
-  color: #00a89a;
-  letter-spacing: 0.4em;
-  opacity: 0.6;
-  margin-bottom: 2.2em;
-}
+        #gameCanvas {
+            border: 3px solid #e94560;
+            background: linear-gradient(to right, #1a1a2e, #0f3460);
+            max-width: 100%;
+            height: auto;
+            aspect-ratio: 2 / 1;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            display: block;
+        }
 
-.modes {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 1.2em;
-  margin-bottom: 2em;
-}
-.mbtn {
-  font-family: 'Share Tech Mono', monospace;
-  font-size: clamp(0.6rem, 1.8vw, 0.85rem);
-  color: #00e8d8;
-  background: transparent;
-  border: 1px solid rgba(0,232,216,0.4);
-  padding: 0.55em 1.4em;
-  cursor: pointer;
-  letter-spacing: 0.15em;
-  transition: all 0.2s;
-  text-shadow: 0 0 6px rgba(0,232,216,0.5);
-}
-.mbtn:hover, .mbtn.sel {
-  border-color: #00e8d8;
-  background: rgba(0,232,216,0.1);
-  box-shadow: 0 0 18px rgba(0,232,216,0.4), inset 0 0 10px rgba(0,232,216,0.08);
-  text-shadow: 0 0 12px #00e8d8;
-}
+        .pause-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            border-radius: 3px;
+        }
+        .pause-overlay.active { display: flex; }
+        .pause-text {
+            font-size: 64px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 20px rgba(255,215,0,0.8);
+            letter-spacing: 8px;
+        }
 
-.instr {
-  font-size: clamp(0.5rem, 1.4vw, 0.7rem);
-  color: rgba(0,168,154,0.6);
-  letter-spacing: 0.15em;
-  text-align: center;
-  line-height: 2.1;
-  margin-bottom: 2.5em;
-}
-.instr .hi { color: #00a89a; }
+        /* ── Controls bar ───────────────────────────────────── */
+        .controls {
+            text-align: center;
+            color: white;
+            background: rgba(255,255,255,0.1);
+            padding: 14px 24px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
 
-.ai-config {
-  display: none;
-  grid-template-columns: repeat(2, minmax(170px, 1fr));
-  gap: 0.8em;
-  width: min(520px, 86%);
-  margin: -0.8em 0 2em;
-}
-.ai-config.on { display: grid; }
-.ai-card {
-  border: 1px solid rgba(0,232,216,0.28);
-  padding: 0.75em;
-  background: rgba(0,232,216,0.04);
-}
-.ai-card-title {
-  color: rgba(0,232,216,0.8);
-  font-size: clamp(0.55rem, 1.4vw, 0.72rem);
-  letter-spacing: 0.18em;
-  margin-bottom: 0.7em;
-}
-.ai-field {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 0.65em;
-}
-.ai-field + .ai-field { margin-top: 0.55em; }
-.ai-field span {
-  color: rgba(0,168,154,0.7);
-  font-size: clamp(0.5rem, 1.2vw, 0.65rem);
-  letter-spacing: 0.12em;
-}
-.ai-field input[type="text"] {
-  width: 100%;
-  min-width: 0;
-  grid-column: 1 / -1;
-  color: #00e8d8;
-  background: rgba(0,0,0,0.3);
-  border: 1px solid rgba(0,232,216,0.35);
-  padding: 0.45em 0.55em;
-  font: inherit;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.ai-field input[type="color"] {
-  width: 38px;
-  height: 28px;
-  padding: 0;
-  background: transparent;
-  border: 1px solid rgba(0,232,216,0.35);
-  cursor: pointer;
-}
-.ai-reset {
-  grid-column: 1 / -1;
-  justify-self: center;
-  margin-top: 0.25em;
-}
+        .controls-hint { font-size: 13px; opacity: 0.8; }
 
-.pulse {
-  font-size: clamp(0.6rem, 1.8vw, 0.85rem);
-  color: #00e8d8;
-  letter-spacing: 0.3em;
-  text-shadow: 0 0 12px #00e8d8;
-  animation: blink 1.3s ease-in-out infinite;
-}
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
+        /* Difficulty selector */
+        .diff-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .diff-label {
+            font-size: 11px;
+            opacity: 0.6;
+            letter-spacing: 0.1em;
+            margin-right: 4px;
+        }
+        .diff-btn {
+            font-family: inherit;
+            font-size: 11px;
+            font-weight: bold;
+            letter-spacing: 0.08em;
+            padding: 5px 12px;
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.3);
+            color: rgba(255,255,255,0.6);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .diff-btn:hover { border-color: rgba(255,255,255,0.7); color: white; }
 
-/* ── Pause ────────────────────────────────────────────────── */
-.pause-title {
-  font-size: clamp(2rem, 6.5vw, 4.5rem);
-  color: #00e8d8;
-  text-shadow: 0 0 22px #00e8d8, 0 0 50px #00b8a9;
-  letter-spacing: 0.45em;
-  margin-bottom: 0.6em;
-}
+        .diff-btn[data-diff="easy"].active    { background: rgba(0,210,120,0.25); border-color: #00d278; color: #00d278; }
+        .diff-btn[data-diff="medium"].active  { background: rgba(0,180,255,0.25); border-color: #00b4ff; color: #00b4ff; }
+        .diff-btn[data-diff="hard"].active    { background: rgba(255,165,0,0.25);  border-color: #ffa500; color: #ffa500; }
+        .diff-btn[data-diff="insane"].active  { background: rgba(255,70,70,0.25);  border-color: #ff4646; color: #ff4646; }
 
-/* ── Game over ────────────────────────────────────────────── */
-.go-winner {
-  font-size: clamp(1.2rem, 4.5vw, 3rem);
-  color: #00e8d8;
-  text-shadow: 0 0 22px #00e8d8, 0 0 50px #00b8a9;
-  letter-spacing: 0.2em;
-  margin-bottom: 0.3em;
-}
-.go-score {
-  font-size: clamp(0.8rem, 2.5vw, 1.4rem);
-  color: rgba(0,168,154,0.75);
-  letter-spacing: 0.2em;
-  margin-bottom: 2.2em;
-}
-</style>
+        /* Action buttons */
+        .action-row {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 9px 22px;
+            font-size: 13px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: 2px solid white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.25s;
+            font-weight: bold;
+        }
+        .btn:hover  { transform: scale(1.05); box-shadow: 0 0 18px rgba(255,255,255,0.35); }
+        .btn:active { transform: scale(0.95); }
+        .btn.pause  { background: linear-gradient(135deg, #ff6b6b, #ee5a6f); }
+        .btn.mute   { background: linear-gradient(135deg, #4a4a6a, #3a3a5a); min-width: 46px; }
+
+        .info { color: rgba(255,255,255,0.55); font-size: 11px; }
+    </style>
 </head>
 <body>
-<div id="wrap">
-  <canvas id="c"></canvas>
+<div class="container">
 
-  <!-- START -->
-  <div class="ov on" id="ovStart">
-    <div class="ov-bg"></div>
-    <div class="big-title">PONG // PHOSPHOR</div>
-    <div class="byline">// ARCADE TERMINAL v2 //</div>
-    <div class="modes">
-      <button class="mbtn sel" id="btnS">SINGLE PLAYER</button>
-      <button class="mbtn" id="btnM">MULTIPLAYER</button>
-      <button class="mbtn" id="btnA">AI DUEL</button>
+    <!-- Scoreboard -->
+    <div class="scoreboard">
+        <div class="highest-score">
+            <h3>BEST</h3>
+            <p id="highestScore">0</p>
+        </div>
+        <div class="score">
+            <h2>Player</h2>
+            <p id="playerScore">0</p>
+        </div>
+        <div class="score">
+            <h2>Computer</h2>
+            <p id="aiScore">0</p>
+        </div>
+        <div class="reset-corner">
+            <button id="resetBtn" class="btn-small">↺ RESET</button>
+        </div>
     </div>
-    <div class="instr" id="instrEl">
-      <span class="hi">W / S</span> &nbsp;—&nbsp; MOVE YOUR PADDLE<br>
-      AI CONTROLS RIGHT PADDLE<br>
-      FIRST TO <span class="hi">7</span> WINS
-    </div>
-    <div class="ai-config" id="aiConfig">
-      <div class="ai-card">
-        <div class="ai-card-title">LEFT AI</div>
-        <label class="ai-field">
-          <span>NAME</span>
-          <input id="leftAiName" type="text" maxlength="12" value="VECTOR">
-        </label>
-        <label class="ai-field">
-          <span>COLOR</span>
-          <input id="leftAiColor" type="color" value="#ff4fd8">
-        </label>
-      </div>
-      <div class="ai-card">
-        <div class="ai-card-title">RIGHT AI</div>
-        <label class="ai-field">
-          <span>NAME</span>
-          <input id="rightAiName" type="text" maxlength="12" value="NOVA">
-        </label>
-        <label class="ai-field">
-          <span>COLOR</span>
-          <input id="rightAiColor" type="color" value="#45f0ff">
-        </label>
-      </div>
-      <button class="mbtn ai-reset" id="resetAiStats" type="button">RESET AI STATS</button>
-    </div>
-    <div class="pulse">PRESS SPACE TO START</div>
-  </div>
 
-  <!-- PAUSE -->
-  <div class="ov" id="ovPause">
-    <div class="ov-bg"></div>
-    <div class="pause-title">PAUSED</div>
-    <div class="pulse">PRESS SPACE TO RESUME</div>
-  </div>
+    <!-- Canvas -->
+    <div class="game-wrapper">
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+        <div class="pause-overlay" id="pauseOverlay">
+            <div class="pause-text">PAUSED</div>
+        </div>
+    </div>
 
-  <!-- GAME OVER -->
-  <div class="ov" id="ovOver">
-    <div class="ov-bg"></div>
-    <div class="go-winner" id="goWinner">PLAYER 1 WINS</div>
-    <div class="go-score" id="goScore">7 — 3</div>
-    <div class="pulse">PRESS SPACE TO PLAY AGAIN</div>
-  </div>
+    <!-- Controls -->
+    <div class="controls">
+        <div class="controls-hint">W / S or ↑ / ↓ to move &nbsp;·&nbsp; Space to pause &nbsp;·&nbsp; M to mute</div>
+
+        <!-- Difficulty -->
+        <div class="diff-row">
+            <span class="diff-label">AI:</span>
+            <button class="diff-btn" data-diff="easy">ROOKIE</button>
+            <button class="diff-btn active" data-diff="medium">VETERAN</button>
+            <button class="diff-btn" data-diff="hard">CALCULATOR</button>
+            <button class="diff-btn" data-diff="insane">THE MACHINE</button>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="action-row">
+            <button id="pauseBtn" class="btn pause">Pause</button>
+            <button id="muteBtn" class="btn mute">🔊</button>
+        </div>
+
+        <div class="info">Resolution: <span id="resolutionInfo">800x400</span></div>
+    </div>
+
 </div>
-
-<script>
-'use strict';
-
-// ── Canvas setup ────────────────────────────────────────────────
-const W = 800, H = 600;
-const canvas = document.getElementById('c');
-const ctx    = canvas.getContext('2d');
-canvas.width = W; canvas.height = H;
-
-// ── Responsive wrapper ──────────────────────────────────────────
-const wrap = document.getElementById('wrap');
-function resize() {
-  let w = window.innerWidth, h = window.innerHeight;
-  // 4:3 inside viewport
-  if (w / h > 4/3) w = h * (4/3); else h = w * (3/4);
-  w = Math.floor(w); h = Math.floor(h);
-  wrap.style.width  = w + 'px';
-  wrap.style.height = h + 'px';
-  canvas.style.width  = w + 'px';
-  canvas.style.height = h + 'px';
-}
-window.addEventListener('resize', resize);
-resize();
-
-// ── DOM refs ────────────────────────────────────────────────────
-const ovStart = document.getElementById('ovStart');
-const ovPause = document.getElementById('ovPause');
-const ovOver  = document.getElementById('ovOver');
-const goWinner = document.getElementById('goWinner');
-const goScore  = document.getElementById('goScore');
-const instrEl  = document.getElementById('instrEl');
-const btnS = document.getElementById('btnS');
-const btnM = document.getElementById('btnM');
-const btnA = document.getElementById('btnA');
-const aiConfig = document.getElementById('aiConfig');
-const leftAiNameInput = document.getElementById('leftAiName');
-const rightAiNameInput = document.getElementById('rightAiName');
-const leftAiColorInput = document.getElementById('leftAiColor');
-const rightAiColorInput = document.getElementById('rightAiColor');
-const resetAiStatsBtn = document.getElementById('resetAiStats');
-
-// ── Constants ───────────────────────────────────────────────────
-const PW = 12, PH = 80, PMARG = 24;
-const BR = 6;               // ball radius
-const INIT_SPD = 5;
-const MAX_SPD  = 13;
-const SPD_INC  = 0.35;
-const PSPD     = 7;
-const WIN      = 7;
-const AI_WIN   = 13;
-const TEAL     = '#00e8d8';
-const TEAL2    = '#00b8a9';
-const TRAIL    = 5;
-const AI_STORAGE_KEY = 'pongPhosphorAiDuel';
-
-// ── State ───────────────────────────────────────────────────────
-let gs   = 'start';   // start | playing | paused | gameover
-let mode = 'single';
-let keys = {};
-let raf  = null;
-
-let lp, rp, ball;
-let trail = [];
-let floats = [];      // { x,y,vy,life,max }
-let flash  = null;    // { side:'l'|'r', a }
-let lpop   = 0, rpop = 0;   // score digit pop scale extra
-let lhit   = 0, rhit = 0;   // paddle pulse
-let aiSettings = loadAiSettings();
-let aiStats = loadAiStats();
-
-// ── Overlay helper ──────────────────────────────────────────────
-function show(which) {
-  [ovStart,ovPause,ovOver].forEach(el => el.classList.remove('on'));
-  if (which) which.classList.add('on');
-}
-
-function sanitizeAiName(name, fallback) {
-  const clean = name.trim().toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 12);
-  return clean || fallback;
-}
-
-function normalizeColor(color, fallback) {
-  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
-}
-
-function defaultAiSettings() {
-  return {
-    left: { name: 'VECTOR', color: '#ff4fd8' },
-    right: { name: 'NOVA', color: '#45f0ff' }
-  };
-}
-
-function defaultAiStats() {
-  return {
-    gamesPlayed: 0,
-    left: { wins: 0, losses: 0, allTimeScore: 0 },
-    right: { wins: 0, losses: 0, allTimeScore: 0 }
-  };
-}
-
-function readAiStorage() {
-  try {
-    return JSON.parse(localStorage.getItem(AI_STORAGE_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function writeAiStorage() {
-  localStorage.setItem(AI_STORAGE_KEY, JSON.stringify({ settings: aiSettings, stats: aiStats }));
-}
-
-function loadAiSettings() {
-  const stored = readAiStorage().settings || {};
-  const defaults = defaultAiSettings();
-  return {
-    left: {
-      name: sanitizeAiName(stored.left?.name || defaults.left.name, defaults.left.name),
-      color: normalizeColor(stored.left?.color || defaults.left.color, defaults.left.color)
-    },
-    right: {
-      name: sanitizeAiName(stored.right?.name || defaults.right.name, defaults.right.name),
-      color: normalizeColor(stored.right?.color || defaults.right.color, defaults.right.color)
-    }
-  };
-}
-
-function loadAiStats() {
-  const stored = readAiStorage().stats || {};
-  const defaults = defaultAiStats();
-  return {
-    gamesPlayed: Number.isFinite(stored.gamesPlayed) ? stored.gamesPlayed : defaults.gamesPlayed,
-    left: {
-      wins: Number.isFinite(stored.left?.wins) ? stored.left.wins : defaults.left.wins,
-      losses: Number.isFinite(stored.left?.losses) ? stored.left.losses : defaults.left.losses,
-      allTimeScore: Number.isFinite(stored.left?.allTimeScore) ? stored.left.allTimeScore : defaults.left.allTimeScore
-    },
-    right: {
-      wins: Number.isFinite(stored.right?.wins) ? stored.right.wins : defaults.right.wins,
-      losses: Number.isFinite(stored.right?.losses) ? stored.right.losses : defaults.right.losses,
-      allTimeScore: Number.isFinite(stored.right?.allTimeScore) ? stored.right.allTimeScore : defaults.right.allTimeScore
-    }
-  };
-}
-
-function syncAiControls() {
-  leftAiNameInput.value = aiSettings.left.name;
-  rightAiNameInput.value = aiSettings.right.name;
-  leftAiColorInput.value = aiSettings.left.color;
-  rightAiColorInput.value = aiSettings.right.color;
-}
-
-function updateAiSetting(side, key, value) {
-  const defaults = defaultAiSettings();
-  aiSettings[side][key] = key === 'name'
-    ? sanitizeAiName(value, defaults[side].name)
-    : normalizeColor(value, defaults[side].color);
-  syncAiControls();
-  writeAiStorage();
-  if (gs === 'playing' || gs === 'gameover') draw();
-}
-
-function getWinScore() {
-  return mode === 'ai' ? AI_WIN : WIN;
-}
-
-// ── Mode buttons ────────────────────────────────────────────────
-btnS.addEventListener('click', () => setMode('single'));
-btnM.addEventListener('click', () => setMode('multi'));
-btnA.addEventListener('click', () => setMode('ai'));
-leftAiNameInput.addEventListener('input', () => updateAiSetting('left', 'name', leftAiNameInput.value));
-rightAiNameInput.addEventListener('input', () => updateAiSetting('right', 'name', rightAiNameInput.value));
-leftAiColorInput.addEventListener('input', () => updateAiSetting('left', 'color', leftAiColorInput.value));
-rightAiColorInput.addEventListener('input', () => updateAiSetting('right', 'color', rightAiColorInput.value));
-resetAiStatsBtn.addEventListener('click', () => {
-  aiStats = defaultAiStats();
-  writeAiStorage();
-  if (ball) draw(); else attractDraw();
-});
-
-function setMode(m) {
-  mode = m;
-  btnS.classList.toggle('sel', m==='single');
-  btnM.classList.toggle('sel', m==='multi');
-  btnA.classList.toggle('sel', m==='ai');
-  aiConfig.classList.toggle('on', m==='ai');
-  if (m === 'single') {
-    instrEl.innerHTML = '<span class="hi">W / S</span> &nbsp;—&nbsp; MOVE YOUR PADDLE<br>AI CONTROLS RIGHT PADDLE<br>FIRST TO <span class="hi">7</span> WINS';
-  } else if (m === 'multi') {
-    instrEl.innerHTML = '<span class="hi">W / S</span> &nbsp;—&nbsp; LEFT PADDLE &nbsp;&nbsp;&nbsp;&nbsp; <span class="hi">↑ / ↓</span> &nbsp;—&nbsp; RIGHT PADDLE<br>FIRST TO <span class="hi">7</span> WINS';
-  } else {
-    instrEl.innerHTML = 'AI CONTROLS BOTH PADDLES<br>CUSTOMIZE NAMES AND COLORS<br>FIRST TO <span class="hi">13</span> WINS';
-  }
-}
-
-// ── Keyboard ────────────────────────────────────────────────────
-window.addEventListener('keydown', e => {
-  keys[e.code] = true;
-  if (['Space','ArrowUp','ArrowDown'].includes(e.code)) e.preventDefault();
-  if (e.code === 'Space') handleSpace();
-}, true);
-window.addEventListener('keyup', e => { keys[e.code] = false; }, true);
-
-function handleSpace() {
-  if (gs === 'start')    { initGame(); startPlay(); }
-  else if (gs === 'playing')  { gs = 'paused'; show(ovPause); cancelAnimationFrame(raf); }
-  else if (gs === 'paused')   { gs = 'playing'; show(null); loop(); }
-  else if (gs === 'gameover') { gs = 'start'; show(ovStart); }
-}
-
-// ── Init ────────────────────────────────────────────────────────
-function initGame() {
-  lp = { x: PMARG, y: H/2 - PH/2, score: 0 };
-  rp = { x: W - PMARG - PW, y: H/2 - PH/2, score: 0 };
-  trail = []; floats = []; flash = null;
-  lpop = rpop = lhit = rhit = 0;
-  newBall(Math.random() > 0.5 ? 1 : -1);
-}
-
-function newBall(dir) {
-  const angle = (Math.random() * 0.6 - 0.3);
-  ball = {
-    x: W/2, y: H/2,
-    vx: dir * INIT_SPD * Math.cos(angle),
-    vy: INIT_SPD * Math.sin(angle),
-    spd: INIT_SPD
-  };
-  trail = [];
-}
-
-function startPlay() {
-  gs = 'playing';
-  show(null);
-  loop();
-}
-
-// ── Game loop ────────────────────────────────────────────────────
-function loop() {
-  if (gs !== 'playing') return;
-  raf = requestAnimationFrame(loop);
-  update();
-  draw();
-}
-
-// ── Update ───────────────────────────────────────────────────────
-function update() {
-  // Left paddle
-  if (mode === 'ai') {
-    updateAI(lp, 'l');
-  } else {
-    if (keys['KeyW']) lp.y = Math.max(0, lp.y - PSPD);
-    if (keys['KeyS']) lp.y = Math.min(H - PH, lp.y + PSPD);
-  }
-
-  // Right paddle
-  if (mode === 'multi') {
-    if (keys['ArrowUp'])   rp.y = Math.max(0, rp.y - PSPD);
-    if (keys['ArrowDown']) rp.y = Math.min(H - PH, rp.y + PSPD);
-  } else {
-    updateAI(rp, 'r');
-  }
-
-  // Trail
-  trail.push({ x: ball.x, y: ball.y });
-  if (trail.length > TRAIL) trail.shift();
-
-  // Move ball
-  const prevX = ball.x, prevY = ball.y;
-  ball.x += ball.vx;
-  ball.y += ball.vy;
-
-  // Top/bottom walls
-  if (ball.y - BR <= 0) { ball.vy = Math.abs(ball.vy); ball.y = BR; }
-  if (ball.y + BR >= H) { ball.vy = -Math.abs(ball.vy); ball.y = H - BR; }
-
-  // Left paddle collision
-  if (ball.vx < 0) {
-    const px = lp.x + PW;
-    if (prevX - BR >= px && ball.x - BR <= px &&
-        ball.y + BR > lp.y && ball.y - BR < lp.y + PH) {
-      const rel = (ball.y - (lp.y + PH/2)) / (PH/2); // -1..1
-      ball.spd = Math.min(ball.spd + SPD_INC, MAX_SPD);
-      const ang = rel * (Math.PI / 3.2);
-      ball.vx =  ball.spd * Math.cos(ang);
-      ball.vy =  ball.spd * Math.sin(ang);
-      ball.x  = px + BR + 1;
-      lhit = 1;
-    }
-  }
-
-  // Right paddle collision
-  if (ball.vx > 0) {
-    const px = rp.x;
-    if (prevX + BR <= px && ball.x + BR >= px &&
-        ball.y + BR > rp.y && ball.y - BR < rp.y + PH) {
-      const rel = (ball.y - (rp.y + PH/2)) / (PH/2);
-      ball.spd = Math.min(ball.spd + SPD_INC, MAX_SPD);
-      const ang = rel * (Math.PI / 3.2);
-      ball.vx = -ball.spd * Math.cos(ang);
-      ball.vy =  ball.spd * Math.sin(ang);
-      ball.x  = px - BR - 1;
-      rhit = 1;
-    }
-  }
-
-  // Scoring
-  if (ball.x + BR < 0)  { scored('r'); return; }
-  if (ball.x - BR > W)  { scored('l'); return; }
-
-  // Decay animations
-  lhit = Math.max(0, lhit - 0.05);
-  rhit = Math.max(0, rhit - 0.05);
-  lpop = Math.max(0, lpop - 0.04);
-  rpop = Math.max(0, rpop - 0.04);
-  if (flash) { flash.a -= 0.025; if (flash.a <= 0) flash = null; }
-
-  // Floating texts
-  floats = floats.filter(f => f.life > 0);
-  floats.forEach(f => { f.y += f.vy; f.life--; });
-}
-
-function updateAI(paddle, side) {
-  const total = lp.score + rp.score;
-  const sideOffset = side === 'l' ? 0 : Math.PI * 0.8;
-  const spd = Math.min(3.2 + total * 0.2 + (side === 'l' ? 0.25 : 0), 5.8);
-  const towardPaddle = side === 'l' ? ball.vx < 0 : ball.vx > 0;
-  const travel = side === 'l'
-    ? Math.max(0, ball.x - (paddle.x + PW))
-    : Math.max(0, paddle.x - ball.x);
-  const lead = towardPaddle ? Math.min(32, travel / Math.max(1, Math.abs(ball.vx))) : 0;
-  const wobble = Math.sin(Date.now() * 0.003 + sideOffset) * 9;
-  const targetY = towardPaddle ? ball.y + ball.vy * lead + wobble : H / 2 + wobble;
-  const target = Math.max(PH / 2, Math.min(H - PH / 2, targetY)) - PH / 2;
-  const diff = target - paddle.y;
-  if (Math.abs(diff) > spd) paddle.y += diff > 0 ? spd : -spd;
-  paddle.y = Math.max(0, Math.min(H - PH, paddle.y));
-}
-
-function scored(side) {
-  if (side === 'l') {
-    lp.score++; lpop = 1;
-    floats.push({ x: 80, y: H/2, vy: -1.8, life: 55, max: 55 });
-    flash = { side: 'l', a: 0.2 };
-    if (lp.score >= getWinScore()) { gameOver(); return; }
-    newBall(1);
-  } else {
-    rp.score++; rpop = 1;
-    floats.push({ x: W - 80, y: H/2, vy: -1.8, life: 55, max: 55 });
-    flash = { side: 'r', a: 0.2 };
-    if (rp.score >= getWinScore()) { gameOver(); return; }
-    newBall(-1);
-  }
-}
-
-function recordAiGame(winner) {
-  aiStats.gamesPlayed++;
-  aiStats.left.allTimeScore += lp.score;
-  aiStats.right.allTimeScore += rp.score;
-  if (winner === 'left') {
-    aiStats.left.wins++;
-    aiStats.right.losses++;
-  } else {
-    aiStats.right.wins++;
-    aiStats.left.losses++;
-  }
-  writeAiStorage();
-}
-
-function gameOver() {
-  cancelAnimationFrame(raf);
-  gs = 'gameover';
-  const lWon = lp.score >= getWinScore();
-  if (mode === 'single') {
-    goWinner.textContent = lWon ? 'YOU WIN!' : 'COMPUTER WINS';
-  } else if (mode === 'ai') {
-    recordAiGame(lWon ? 'left' : 'right');
-    goWinner.textContent = lWon ? `${aiSettings.left.name} WINS` : `${aiSettings.right.name} WINS`;
-  } else {
-    goWinner.textContent = lWon ? 'PLAYER 1 WINS' : 'PLAYER 2 WINS';
-  }
-  goScore.textContent = `${lp.score}  —  ${rp.score}`;
-  draw(); // draw final frame first
-  show(ovOver);
-}
-
-// ── Draw ─────────────────────────────────────────────────────────
-function draw() {
-  // Background
-  ctx.fillStyle = '#07070e';
-  ctx.fillRect(0, 0, W, H);
-
-  // Side flash
-  if (flash) {
-    ctx.save();
-    ctx.globalAlpha = flash.a;
-    ctx.fillStyle = flash.side === 'l' && mode === 'ai' ? aiSettings.left.color :
-                    flash.side === 'r' && mode === 'ai' ? aiSettings.right.color :
-                    TEAL;
-    if (flash.side === 'l') ctx.fillRect(0, 0, W/2, H);
-    else ctx.fillRect(W/2, 0, W/2, H);
-    ctx.restore();
-  }
-
-  // Center dashed divider
-  ctx.save();
-  ctx.strokeStyle = 'rgba(0,232,216,0.12)';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([14, 18]);
-  ctx.beginPath();
-  ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.restore();
-
-  // Tick marks (paddle travel limits)
-  drawTicks();
-
-  // Ball trail
-  for (let i = 0; i < trail.length; i++) {
-    const t  = (i + 1) / (trail.length + 1);
-    const r  = BR * t * 0.85;
-    const al = t * 0.35;
-    ctx.save();
-    ctx.globalAlpha = al;
-    ctx.fillStyle = TEAL;
-    ctx.shadowColor = TEAL;
-    ctx.shadowBlur = 8;
-    ctx.beginPath();
-    ctx.arc(trail[i].x, trail[i].y, r, 0, Math.PI*2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // Ball
-  ctx.save();
-  ctx.fillStyle = TEAL;
-  ctx.shadowColor = TEAL;
-  ctx.shadowBlur = 22;
-  ctx.beginPath();
-  ctx.arc(ball.x, ball.y, BR, 0, Math.PI*2);
-  ctx.fill();
-  ctx.shadowBlur = 8;
-  ctx.fillStyle = '#aafff8';
-  ctx.beginPath();
-  ctx.arc(ball.x - BR*0.28, ball.y - BR*0.28, BR * 0.32, 0, Math.PI*2);
-  ctx.fill();
-  ctx.restore();
-
-  // Paddles
-  drawPaddle(lp, lhit, mode === 'ai' ? aiSettings.left.color : TEAL);
-  drawPaddle(rp, rhit, mode === 'ai' ? aiSettings.right.color : TEAL);
-
-  // Scores
-  if (mode === 'ai') {
-    drawAiHud();
-  } else {
-    drawScore(W/4,     lp.score, 1 + lpop * 0.55, TEAL);
-    drawScore(3*W/4,   rp.score, 1 + rpop * 0.55, TEAL);
-  }
-
-  // Floating +1 texts
-  floats.forEach(f => {
-    const al = Math.min(1, f.life / 15);
-    ctx.save();
-    ctx.globalAlpha = al;
-    ctx.fillStyle = TEAL;
-    ctx.shadowColor = TEAL;
-    ctx.shadowBlur = 12;
-    ctx.font = "bold 26px 'Share Tech Mono', monospace";
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('+1', f.x, f.y);
-    ctx.restore();
-  });
-}
-
-function drawTicks() {
-  ctx.save();
-  ctx.strokeStyle = 'rgba(0,232,216,0.22)';
-  ctx.lineWidth = 1.5;
-  const tw = 7;
-  // Left side: top, bottom, and bottom-paddle-limit from top
-  const lx = PMARG + PW + 4;
-  lines(ctx, [lx, 0, lx + tw, 0],
-             [lx, H, lx + tw, H],
-             [lx, H - PH, lx + tw, H - PH]);
-  // Right side
-  const rx = W - PMARG - PW - 4;
-  lines(ctx, [rx, 0, rx - tw, 0],
-             [rx, H, rx - tw, H],
-             [rx, H - PH, rx - tw, H - PH]);
-  ctx.stroke();
-  ctx.restore();
-}
-
-function lines(ctx, ...segs) {
-  ctx.beginPath();
-  segs.forEach(([x1,y1,x2,y2]) => { ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); });
-}
-
-function drawPaddle(p, hit, color) {
-  ctx.save();
-  const glow = 14 + hit * 38;
-  ctx.fillStyle = color;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = glow;
-  rrect(ctx, p.x, p.y, PW, PH, 4);
-  ctx.fill();
-  // Bright inner highlight
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = `rgba(170,255,248,${0.25 + hit * 0.35})`;
-  rrect(ctx, p.x + 2, p.y + 4, PW - 4, PH * 0.35, 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-function rrect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x+r, y);
-  ctx.lineTo(x+w-r, y);
-  ctx.arcTo(x+w, y,   x+w, y+r,   r);
-  ctx.lineTo(x+w, y+h-r);
-  ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
-  ctx.lineTo(x+r, y+h);
-  ctx.arcTo(x,   y+h, x,   y+h-r, r);
-  ctx.lineTo(x,   y+r);
-  ctx.arcTo(x,   y,   x+r, y,     r);
-  ctx.closePath();
-}
-
-function drawAiHud() {
-  drawScore(74, lp.score, 1 + lpop * 0.42, aiSettings.left.color);
-  drawScore(W - 74, rp.score, 1 + rpop * 0.42, aiSettings.right.color);
-  drawAiPanel(22, 96, 'left', aiSettings.left, aiStats.left);
-  drawAiPanel(W - 22, 96, 'right', aiSettings.right, aiStats.right);
-
-  ctx.save();
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.font = "15px 'Share Tech Mono', monospace";
-  ctx.fillStyle = 'rgba(0,232,216,0.65)';
-  ctx.shadowColor = TEAL;
-  ctx.shadowBlur = 8;
-  ctx.fillText(`GAMES PLAYED ${aiStats.gamesPlayed}`, W / 2, 18);
-  ctx.fillText(`RACE TO ${AI_WIN}`, W / 2, 40);
-  ctx.restore();
-}
-
-function drawAiPanel(x, y, side, settings, stats) {
-  const right = side === 'right';
-  ctx.save();
-  ctx.textAlign = right ? 'right' : 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = settings.color;
-  ctx.shadowColor = settings.color;
-  ctx.shadowBlur = 12;
-  ctx.font = "18px 'Share Tech Mono', monospace";
-  ctx.fillText(settings.name, x, y);
-  ctx.shadowBlur = 4;
-  ctx.font = "13px 'Share Tech Mono', monospace";
-  ctx.fillStyle = 'rgba(170,255,248,0.75)';
-  ctx.fillText(`W ${stats.wins} / L ${stats.losses}`, x, y + 24);
-  ctx.fillText(`ALL TIME ${stats.allTimeScore}`, x, y + 43);
-  ctx.restore();
-}
-
-function drawScore(cx, val, scale, color) {
-  ctx.save();
-  ctx.translate(cx, 44);
-  ctx.scale(scale, scale);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = "68px 'Share Tech Mono', monospace";
-  ctx.fillStyle = color;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 22;
-  ctx.fillText(val, 0, 0);
-  ctx.restore();
-}
-
-// ── Initial static draw (attract) ────────────────────────────────
-function attractDraw() {
-  ctx.fillStyle = '#07070e';
-  ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = 'rgba(0,232,216,0.1)';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([14,18]);
-  ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
-  ctx.setLineDash([]);
-}
-syncAiControls();
-attractDraw();
-</script>
+<script src="script.js"></script>
 </body>
 </html>
