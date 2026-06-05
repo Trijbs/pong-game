@@ -105,6 +105,8 @@ canvas {
 
 .modes {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 1.2em;
   margin-bottom: 2em;
 }
@@ -183,6 +185,7 @@ canvas {
     <div class="modes">
       <button class="mbtn sel" id="btnS">SINGLE PLAYER</button>
       <button class="mbtn" id="btnM">MULTIPLAYER</button>
+      <button class="mbtn" id="btnA">AI DUEL</button>
     </div>
     <div class="instr" id="instrEl">
       <span class="hi">W / S</span> &nbsp;—&nbsp; MOVE YOUR PADDLE<br>
@@ -241,6 +244,7 @@ const goScore  = document.getElementById('goScore');
 const instrEl  = document.getElementById('instrEl');
 const btnS = document.getElementById('btnS');
 const btnM = document.getElementById('btnM');
+const btnA = document.getElementById('btnA');
 
 // ── Constants ───────────────────────────────────────────────────
 const PW = 12, PH = 80, PMARG = 24;
@@ -276,13 +280,19 @@ function show(which) {
 // ── Mode buttons ────────────────────────────────────────────────
 btnS.addEventListener('click', () => setMode('single'));
 btnM.addEventListener('click', () => setMode('multi'));
+btnA.addEventListener('click', () => setMode('ai'));
 function setMode(m) {
   mode = m;
   btnS.classList.toggle('sel', m==='single');
   btnM.classList.toggle('sel', m==='multi');
-  instrEl.innerHTML = m === 'single'
-    ? '<span class="hi">W / S</span> &nbsp;—&nbsp; MOVE YOUR PADDLE<br>AI CONTROLS RIGHT PADDLE<br>FIRST TO <span class="hi">7</span> WINS'
-    : '<span class="hi">W / S</span> &nbsp;—&nbsp; LEFT PADDLE &nbsp;&nbsp;&nbsp;&nbsp; <span class="hi">↑ / ↓</span> &nbsp;—&nbsp; RIGHT PADDLE<br>FIRST TO <span class="hi">7</span> WINS';
+  btnA.classList.toggle('sel', m==='ai');
+  if (m === 'single') {
+    instrEl.innerHTML = '<span class="hi">W / S</span> &nbsp;—&nbsp; MOVE YOUR PADDLE<br>AI CONTROLS RIGHT PADDLE<br>FIRST TO <span class="hi">7</span> WINS';
+  } else if (m === 'multi') {
+    instrEl.innerHTML = '<span class="hi">W / S</span> &nbsp;—&nbsp; LEFT PADDLE &nbsp;&nbsp;&nbsp;&nbsp; <span class="hi">↑ / ↓</span> &nbsp;—&nbsp; RIGHT PADDLE<br>FIRST TO <span class="hi">7</span> WINS';
+  } else {
+    instrEl.innerHTML = 'AI CONTROLS BOTH PADDLES<br>LEFT AI VS RIGHT AI<br>FIRST TO <span class="hi">7</span> WINS';
+  }
 }
 
 // ── Keyboard ────────────────────────────────────────────────────
@@ -336,16 +346,20 @@ function loop() {
 
 // ── Update ───────────────────────────────────────────────────────
 function update() {
-  // Left paddle (player always)
-  if (keys['KeyW']) lp.y = Math.max(0, lp.y - PSPD);
-  if (keys['KeyS']) lp.y = Math.min(H - PH, lp.y + PSPD);
+  // Left paddle
+  if (mode === 'ai') {
+    updateAI(lp, 'l');
+  } else {
+    if (keys['KeyW']) lp.y = Math.max(0, lp.y - PSPD);
+    if (keys['KeyS']) lp.y = Math.min(H - PH, lp.y + PSPD);
+  }
 
   // Right paddle
   if (mode === 'multi') {
     if (keys['ArrowUp'])   rp.y = Math.max(0, rp.y - PSPD);
     if (keys['ArrowDown']) rp.y = Math.min(H - PH, rp.y + PSPD);
   } else {
-    updateAI();
+    updateAI(rp, 'r');
   }
 
   // Trail
@@ -407,15 +421,21 @@ function update() {
   floats.forEach(f => { f.y += f.vy; f.life--; });
 }
 
-function updateAI() {
+function updateAI(paddle, side) {
   const total = lp.score + rp.score;
-  const spd   = Math.min(3.2 + total * 0.2, 5.5);
-  // Imperfect aim: wobble target
-  const wobble = (Math.sin(Date.now() * 0.003) * 8);
-  const target = ball.y - PH/2 + wobble;
-  const diff   = target - rp.y;
-  if (Math.abs(diff) > spd) rp.y += diff > 0 ? spd : -spd;
-  rp.y = Math.max(0, Math.min(H - PH, rp.y));
+  const sideOffset = side === 'l' ? 0 : Math.PI * 0.8;
+  const spd = Math.min(3.2 + total * 0.2 + (side === 'l' ? 0.25 : 0), 5.8);
+  const towardPaddle = side === 'l' ? ball.vx < 0 : ball.vx > 0;
+  const travel = side === 'l'
+    ? Math.max(0, ball.x - (paddle.x + PW))
+    : Math.max(0, paddle.x - ball.x);
+  const lead = towardPaddle ? Math.min(32, travel / Math.max(1, Math.abs(ball.vx))) : 0;
+  const wobble = Math.sin(Date.now() * 0.003 + sideOffset) * 9;
+  const targetY = towardPaddle ? ball.y + ball.vy * lead + wobble : H / 2 + wobble;
+  const target = Math.max(PH / 2, Math.min(H - PH / 2, targetY)) - PH / 2;
+  const diff = target - paddle.y;
+  if (Math.abs(diff) > spd) paddle.y += diff > 0 ? spd : -spd;
+  paddle.y = Math.max(0, Math.min(H - PH, paddle.y));
 }
 
 function scored(side) {
@@ -440,6 +460,8 @@ function gameOver() {
   const lWon = lp.score >= WIN;
   if (mode === 'single') {
     goWinner.textContent = lWon ? 'YOU WIN!' : 'COMPUTER WINS';
+  } else if (mode === 'ai') {
+    goWinner.textContent = lWon ? 'LEFT AI WINS' : 'RIGHT AI WINS';
   } else {
     goWinner.textContent = lWon ? 'PLAYER 1 WINS' : 'PLAYER 2 WINS';
   }
