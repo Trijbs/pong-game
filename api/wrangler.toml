@@ -1,0 +1,20 @@
+name = "pong-api"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pong_db"
+database_id = "17c9194d-4d68-4c1f-bffa-1ea01296501c"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "9ffa6886d6ea4ddc924aff84db7cd341"
+
+[vars]
+ALLOWED_ORIGIN = "https://pong.trijbsworld.nl"
+
+[[routes]]
+pattern = "api.pong.trijbsworld.nl"
+custom_domain = true
