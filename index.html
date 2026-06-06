@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none';">
 <title>PONG // PHOSPHOR</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -317,24 +318,61 @@ class AccountManager {
   isLoggedIn()     { return !!this.getCurrentUser(); }
   getAccount(u)    { const n = u ?? this.getCurrentUser(); return n ? (this._load()[n.toUpperCase()] || null) : null; }
 
-  async _sha256(str) {
-    // Use Web Crypto when available (HTTPS / localhost)
-    if (window.crypto && window.crypto.subtle) {
+  // ── Password hashing (PBKDF2, 100k iterations, per-user salt) ──────────
+  _generateSalt() {
+    return [...crypto.getRandomValues(new Uint8Array(16))]
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async _hashPassword(password, salt) {
+    const enc = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']
+    );
+    const bits = await crypto.subtle.deriveBits(
+      { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations: 100000 },
+      key, 256
+    );
+    return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // Legacy SHA-256 kept only for migrating pre-existing accounts on first login
+  async _sha256Legacy(str) {
+    if (window.crypto?.subtle) {
       try {
         const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
         return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
       } catch(e) { /* fall through */ }
     }
-    // Pure-JS fallback — good enough for localStorage-only game
+    // Weak JS fallback (only reached on non-HTTPS — kept for migration only)
     let h1 = 0x811c9dc5, h2 = 0x9747b28c;
     for (let i = 0; i < str.length; i++) {
       h1 = Math.imul(h1 ^ str.charCodeAt(i), 0x01000193) >>> 0;
       h2 = Math.imul(h2 ^ str.charCodeAt(i), 0x9e3779b9) >>> 0;
     }
-    // Extend to 64-char hex so it looks like a real hash
     const mix = [h1, h2, h1 ^ 0xdeadbeef, h2 ^ 0xcafebabe, h1 + h2, h1 * h2, h2 - h1, h1 | h2];
     return mix.map(n => (n >>> 0).toString(16).padStart(8, '0')).join('');
   }
+
+  // ── Rate limiting (sessionStorage — resets on tab close) ──────────────
+  _rlKey(u)   { return `pong_rl_${u}`; }
+  _rlGet(u)   { try { return JSON.parse(sessionStorage.getItem(this._rlKey(u)) || '{"a":0,"t":0}'); } catch { return {a:0,t:0}; } }
+  _rlSet(u,d) { sessionStorage.setItem(this._rlKey(u), JSON.stringify(d)); }
+
+  _checkRateLimit(u) {
+    const d = this._rlGet(u);
+    if (Date.now() < d.t) {
+      const sec = Math.ceil((d.t - Date.now()) / 1000);
+      throw new Error(`TOO MANY ATTEMPTS — WAIT ${sec}S`);
+    }
+  }
+  _recordFail(u) {
+    const d = this._rlGet(u);
+    d.a = (d.a || 0) + 1;
+    if (d.a >= 5) { d.t = Date.now() + 30000; d.a = 0; }
+    this._rlSet(u, d);
+  }
+  _clearRateLimit(u) { sessionStorage.removeItem(this._rlKey(u)); }
 
   async register(username, email, password, confirm) {
     if (!username || username.length < 2)           throw new Error('USERNAME TOO SHORT (MIN 2)');
@@ -344,7 +382,9 @@ class AccountManager {
     if (password !== confirm)                       throw new Error('PASSWORDS DO NOT MATCH');
     const accounts = this._load(), uname = username.toUpperCase();
     if (accounts[uname])                            throw new Error('USERNAME ALREADY TAKEN');
-    accounts[uname] = this._blank(uname, email.toLowerCase(), await this._sha256(password));
+    const salt = this._generateSalt();
+    const hash = await this._hashPassword(password, salt);
+    accounts[uname] = this._blank(uname, email.toLowerCase(), hash, salt);
     this._save(accounts); localStorage.setItem(this._CK, uname);
     return accounts[uname];
   }
@@ -352,19 +392,37 @@ class AccountManager {
   async login(username, password) {
     if (!username) throw new Error('ENTER A USERNAME');
     if (!password) throw new Error('ENTER A PASSWORD');
-    const uname = username.toUpperCase(), acc = this._load()[uname];
-    if (!acc)                                          throw new Error('ACCOUNT NOT FOUND');
-    if (await this._sha256(password) !== acc.passwordHash) throw new Error('WRONG PASSWORD');
+    const uname = username.toUpperCase();
+    this._checkRateLimit(uname);
+    const accounts = this._load(), acc = accounts[uname];
+    // Generic error — don't reveal whether username exists (prevents enumeration)
+    if (!acc) { this._recordFail(uname); throw new Error('INVALID USERNAME OR PASSWORD'); }
+    let valid = false;
+    if (!acc.salt) {
+      // Legacy account — verify with old SHA-256, then transparently upgrade to PBKDF2
+      const oldHash = await this._sha256Legacy(password);
+      if (oldHash === acc.passwordHash) {
+        const salt = this._generateSalt();
+        acc.salt = salt;
+        acc.passwordHash = await this._hashPassword(password, salt);
+        accounts[uname] = acc; this._save(accounts);
+        valid = true;
+      }
+    } else {
+      valid = (await this._hashPassword(password, acc.salt)) === acc.passwordHash;
+    }
+    if (!valid) { this._recordFail(uname); throw new Error('INVALID USERNAME OR PASSWORD'); }
+    this._clearRateLimit(uname);
     localStorage.setItem(this._CK, uname);
     return acc;
   }
 
   logout() { localStorage.removeItem(this._CK); }
 
-  _blank(username, email, passwordHash) {
+  _blank(username, email, passwordHash, salt) {
     const av = ['🕹️','👾','🎮','⚡','🔥','💎'];
     return {
-      username, email, passwordHash,
+      username, email, passwordHash, salt,
       avatar: av[Math.floor(Math.random() * av.length)],
       createdAt: Date.now(),
       stats: { gamesPlayed:0, wins:0, losses:0, totalPlayTimeSec:0, longestRally:0, maxBallSpeed:0, highScore:0 },
