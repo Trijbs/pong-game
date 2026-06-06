@@ -166,6 +166,7 @@ canvas { display: block; }
     <div class="acc-subtitle" id="accSubtitle">// PLAYER LOGIN //</div>
     <div class="acc-form">
       <input class="acc-input" id="accUser"  type="text"     placeholder="USERNAME"         maxlength="16" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <input class="acc-input" id="accEmail" type="email"    placeholder="EMAIL"            maxlength="64" autocomplete="email" style="display:none">
       <input class="acc-input" id="accPass"  type="password" placeholder="PASSWORD"         maxlength="32">
       <input class="acc-input" id="accPass2" type="password" placeholder="CONFIRM PASSWORD" maxlength="32" style="display:none">
       <div class="acc-err" id="accErr"></div>
@@ -298,14 +299,15 @@ class AccountManager {
     return mix.map(n => (n >>> 0).toString(16).padStart(8, '0')).join('');
   }
 
-  async register(username, password, confirm) {
-    if (!username || username.length < 2)      throw new Error('USERNAME TOO SHORT (MIN 2)');
-    if (!/^[A-Za-z0-9_]+$/.test(username))    throw new Error('LETTERS, NUMBERS AND _ ONLY');
-    if (!password || password.length < 4)      throw new Error('PASSWORD TOO SHORT (MIN 4)');
-    if (password !== confirm)                  throw new Error('PASSWORDS DO NOT MATCH');
+  async register(username, email, password, confirm) {
+    if (!username || username.length < 2)           throw new Error('USERNAME TOO SHORT (MIN 2)');
+    if (!/^[A-Za-z0-9_]+$/.test(username))         throw new Error('LETTERS, NUMBERS AND _ ONLY');
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('ENTER A VALID EMAIL');
+    if (!password || password.length < 4)           throw new Error('PASSWORD TOO SHORT (MIN 4)');
+    if (password !== confirm)                       throw new Error('PASSWORDS DO NOT MATCH');
     const accounts = this._load(), uname = username.toUpperCase();
-    if (accounts[uname])                       throw new Error('USERNAME ALREADY TAKEN');
-    accounts[uname] = this._blank(uname, await this._sha256(password));
+    if (accounts[uname])                            throw new Error('USERNAME ALREADY TAKEN');
+    accounts[uname] = this._blank(uname, email.toLowerCase(), await this._sha256(password));
     this._save(accounts); localStorage.setItem(this._CK, uname);
     return accounts[uname];
   }
@@ -322,10 +324,10 @@ class AccountManager {
 
   logout() { localStorage.removeItem(this._CK); }
 
-  _blank(username, passwordHash) {
+  _blank(username, email, passwordHash) {
     const av = ['🕹️','👾','🎮','⚡','🔥','💎'];
     return {
-      username, passwordHash,
+      username, email, passwordHash,
       avatar: av[Math.floor(Math.random() * av.length)],
       createdAt: Date.now(),
       stats: { gamesPlayed:0, wins:0, losses:0, totalPlayTimeSec:0, longestRally:0, maxBallSpeed:0, highScore:0 },
@@ -512,6 +514,7 @@ function setAccMode(m) {
   document.getElementById('accSubtitle').textContent = m === 'login' ? '// PLAYER LOGIN //' : '// CREATE ACCOUNT //';
   document.getElementById('accSubmitBtn').textContent = m === 'login' ? 'LOGIN' : 'REGISTER';
   document.getElementById('accModeToggle').textContent = m === 'login' ? 'No account yet? Register →' : '← Back to login';
+  document.getElementById('accEmail').style.display = m === 'register' ? '' : 'none';
   document.getElementById('accPass2').style.display = m === 'register' ? '' : 'none';
   document.getElementById('accErr').textContent = '';
 }
@@ -519,9 +522,10 @@ function setAccMode(m) {
 document.getElementById('accModeToggle').addEventListener('click', () => setAccMode(accMode === 'login' ? 'register' : 'login'));
 
 document.getElementById('accSubmitBtn').addEventListener('click', async () => {
-  const u = document.getElementById('accUser').value.trim();
-  const p = document.getElementById('accPass').value;
-  const p2 = document.getElementById('accPass2').value;
+  const u   = document.getElementById('accUser').value.trim();
+  const em  = document.getElementById('accEmail').value.trim();
+  const p   = document.getElementById('accPass').value;
+  const p2  = document.getElementById('accPass2').value;
   const errEl = document.getElementById('accErr');
   errEl.textContent = '';
   try {
@@ -529,14 +533,14 @@ document.getElementById('accSubmitBtn').addEventListener('click', async () => {
       await acctMgr.login(u, p);
       onLoggedIn(false);
     } else {
-      await acctMgr.register(u, p, p2);
+      await acctMgr.register(u, em, p, p2);
       onLoggedIn(true);
     }
   } catch(e) { errEl.textContent = e.message; }
 });
 
 // Allow Enter key in account form
-['accUser','accPass','accPass2'].forEach(id => {
+['accUser','accEmail','accPass','accPass2'].forEach(id => {
   document.getElementById(id).addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('accSubmitBtn').click();
   });
