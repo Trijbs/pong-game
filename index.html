@@ -43,7 +43,7 @@ canvas { display: block; }
   transform: scale(0.97); overflow-y: auto;
 }
 .ov.on { opacity: 1; pointer-events: all; transform: scale(1); }
-.ov-bg { position: absolute; inset: 0; background: rgba(4,4,12,0.93); }
+.ov-bg { position: absolute; inset: 0; background: #04040c; }
 .ov > * { position: relative; z-index: 1; }
 /* Account + profile overlays sit above start screen */
 .ov-hi { z-index: 35 !important; }
@@ -128,25 +128,55 @@ canvas { display: block; }
 .acc-toggle:hover { color: #00a89a; }
 .guest-note { font-size: clamp(0.38rem, 1vw, 0.52rem); color: rgba(0,168,154,0.38); letter-spacing: 0.08em; text-align: center; line-height: 1.7; border-top: 1px solid rgba(0,232,216,0.07); padding-top: 0.5em; max-width: min(290px, 68vw); }
 
-/* ── Profile overlay ────────────────────────────────────── */
-.prof-avatar { font-size: clamp(2rem, 6vw, 3.5rem); line-height: 1; filter: drop-shadow(0 0 10px rgba(0,232,216,0.4)); margin-bottom: 0.2em; }
-.prof-name   { font-size: clamp(0.9rem, 2.8vw, 1.8rem); color: #00e8d8; text-shadow: 0 0 14px #00e8d8; letter-spacing: 0.2em; margin-bottom: 0.05em; }
-.prof-lvl    { font-size: clamp(0.46rem, 1.2vw, 0.65rem); color: rgba(0,168,154,0.6); letter-spacing: 0.18em; margin-bottom: 0.5em; }
-.xp-bar-outer { width: min(240px, 56vw); height: 5px; background: rgba(0,232,216,0.09); border: 1px solid rgba(0,232,216,0.16); margin-bottom: 0.25em; }
+/* ── Profile overlay — full dedicated page ── */
+#ovProfile { justify-content: flex-start; }
+#ovProfile .ov-bg { background: #04040c; }
+
+/* Sticky top nav bar */
+.prof-nav {
+  width: 100%; flex-shrink: 0;
+  position: relative; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.7em 1.2em;
+  border-bottom: 1px solid rgba(0,232,216,0.12);
+  background: rgba(0,232,216,0.02);
+}
+.prof-nav-title {
+  font-size: clamp(0.4rem, 1vw, 0.55rem);
+  color: rgba(0,168,154,0.4); letter-spacing: 0.3em;
+}
+
+/* Scrollable content area */
+.prof-scroll {
+  flex: 1; width: 100%; overflow-y: auto;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 1.3em 1em 2em;
+  position: relative; z-index: 1;
+  scrollbar-width: thin; scrollbar-color: rgba(0,232,216,0.18) transparent;
+}
+
+.prof-header {
+  display: flex; flex-direction: column; align-items: center;
+  border-bottom: 1px solid rgba(0,232,216,0.1);
+  padding-bottom: 0.8em; margin-bottom: 0.9em; width: min(500px, 88vw);
+}
+.prof-avatar { font-size: clamp(2.2rem, 5.5vw, 3.2rem); line-height: 1; filter: drop-shadow(0 0 10px rgba(0,232,216,0.4)); margin-bottom: 0.15em; }
+.prof-name   { font-size: clamp(1rem, 3vw, 1.9rem); color: #00e8d8; text-shadow: 0 0 14px #00e8d8; letter-spacing: 0.2em; margin-bottom: 0.05em; }
+.prof-lvl    { font-size: clamp(0.48rem, 1.2vw, 0.65rem); color: rgba(0,168,154,0.6); letter-spacing: 0.2em; margin-bottom: 0.45em; }
+.xp-bar-outer { width: min(260px, 58vw); height: 5px; background: rgba(0,232,216,0.09); border: 1px solid rgba(0,232,216,0.16); margin-bottom: 0.22em; }
 .xp-bar-inner { height: 100%; background: #00e8d8; box-shadow: 0 0 6px #00e8d8; transition: width 0.6s ease; }
-.xp-bar-lbl  { font-size: clamp(0.36rem, 0.95vw, 0.5rem); color: rgba(0,168,154,0.48); letter-spacing: 0.1em; margin-bottom: 0.9em; }
-.prof-body   { display: flex; gap: clamp(1em, 3vw, 2.2em); margin-bottom: 0.9em; max-width: 90vw; }
-.prof-col    { display: flex; flex-direction: column; }
-.prof-col-title { font-size: clamp(0.38rem, 1vw, 0.52rem); color: rgba(0,168,154,0.42); letter-spacing: 0.28em; border-bottom: 1px solid rgba(0,232,216,0.07); padding-bottom: 0.22em; margin-bottom: 0.38em; }
-.stat-row    { display: flex; justify-content: space-between; gap: 1.2em; font-size: clamp(0.4rem, 1.05vw, 0.56rem); letter-spacing: 0.07em; margin-bottom: 0.22em; }
-.stat-k { color: rgba(0,168,154,0.52); }
+.xp-bar-lbl  { font-size: clamp(0.37rem, 0.95vw, 0.5rem); color: rgba(0,168,154,0.48); letter-spacing: 0.1em; }
+.prof-body   { display: flex; gap: clamp(1.2em, 3.5vw, 2.8em); width: min(500px, 88vw); }
+.prof-col    { display: flex; flex-direction: column; flex: 1; }
+.prof-col-title { font-size: clamp(0.38rem, 1vw, 0.52rem); color: rgba(0,168,154,0.42); letter-spacing: 0.28em; border-bottom: 1px solid rgba(0,232,216,0.07); padding-bottom: 0.22em; margin-bottom: 0.4em; }
+.stat-row    { display: flex; justify-content: space-between; gap: 0.8em; font-size: clamp(0.42rem, 1.05vw, 0.58rem); letter-spacing: 0.07em; margin-bottom: 0.24em; }
+.stat-k { color: rgba(0,168,154,0.52); white-space: nowrap; }
 .stat-v { color: #00e8d8; text-shadow: 0 0 5px rgba(0,232,216,0.28); }
 .ach-grid  { display: grid; grid-template-columns: repeat(3,1fr); gap: 0.3em; }
-.ach-item  { display: flex; flex-direction: column; align-items: center; gap: 0.08em; padding: 0.26em 0.12em; border: 1px solid rgba(0,232,216,0.06); opacity: 0.28; filter: grayscale(1); transition: all 0.2s; cursor: default; }
-.ach-item.got { opacity: 1; filter: none; border-color: rgba(0,232,216,0.28); box-shadow: 0 0 5px rgba(0,232,216,0.06); }
-.ach-ico { font-size: clamp(0.85rem, 2.4vw, 1.25rem); line-height: 1.1; }
-.ach-lbl { font-size: clamp(0.3rem, 0.8vw, 0.42rem); color: rgba(0,168,154,0.65); letter-spacing: 0.04em; text-align: center; line-height: 1.2; }
-.prof-btns { display: flex; gap: 0.65em; margin-top: 0.3em; }
+.ach-item  { display: flex; flex-direction: column; align-items: center; gap: 0.08em; padding: 0.28em 0.1em; border: 1px solid rgba(0,232,216,0.06); opacity: 0.25; filter: grayscale(1); transition: all 0.2s; cursor: default; }
+.ach-item.got { opacity: 1; filter: none; border-color: rgba(0,232,216,0.3); box-shadow: 0 0 6px rgba(0,232,216,0.08); }
+.ach-ico { font-size: clamp(0.9rem, 2.4vw, 1.3rem); line-height: 1.1; }
+.ach-lbl { font-size: clamp(0.3rem, 0.8vw, 0.43rem); color: rgba(0,168,154,0.65); letter-spacing: 0.04em; text-align: center; line-height: 1.2; }
 
 /* ── Toast ──────────────────────────────────────────────── */
 #toastWrap { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 5px; pointer-events: none; white-space: nowrap; }
@@ -181,32 +211,39 @@ canvas { display: block; }
   <!-- ── PROFILE ─────────────────────────────────────────── -->
   <div class="ov ov-hi" id="ovProfile">
     <div class="ov-bg"></div>
-    <div class="prof-avatar" id="profAvatar">🕹️</div>
-    <div class="prof-name"   id="profName">PLAYER</div>
-    <div class="prof-lvl"    id="profLvl">LEVEL 1</div>
-    <div class="xp-bar-outer"><div class="xp-bar-inner" id="xpBarFill" style="width:0%"></div></div>
-    <div class="xp-bar-lbl"  id="xpBarLbl">0 / 500 XP TO NEXT LEVEL</div>
-    <div class="prof-body">
-      <div class="prof-col">
-        <div class="prof-col-title">STATS</div>
-        <div class="stat-row"><span class="stat-k">GAMES</span>      <span class="stat-v" id="pGames">0</span></div>
-        <div class="stat-row"><span class="stat-k">WINS</span>       <span class="stat-v" id="pWins">0</span></div>
-        <div class="stat-row"><span class="stat-k">LOSSES</span>     <span class="stat-v" id="pLosses">0</span></div>
-        <div class="stat-row"><span class="stat-k">WIN RATE</span>   <span class="stat-v" id="pWinRate">—</span></div>
-        <div class="stat-row"><span class="stat-k">HIGH SCORE</span> <span class="stat-v" id="pHS">0</span></div>
-        <div class="stat-row"><span class="stat-k">BEST RALLY</span> <span class="stat-v" id="pRally">0</span></div>
-        <div class="stat-row"><span class="stat-k">MAX SPEED</span>  <span class="stat-v" id="pSpeed">0</span></div>
-        <div class="stat-row"><span class="stat-k">PLAY TIME</span>  <span class="stat-v" id="pTime">0:00</span></div>
-        <div class="stat-row"><span class="stat-k">WIN STREAK</span> <span class="stat-v" id="pStreak">0</span></div>
-      </div>
-      <div class="prof-col">
-        <div class="prof-col-title">ACHIEVEMENTS</div>
-        <div class="ach-grid" id="achGrid"></div>
-      </div>
+    <!-- top nav bar -->
+    <div class="prof-nav">
+      <button class="mbtn-sm" id="profBackBtn">← BACK</button>
+      <span class="prof-nav-title">// PLAYER PROFILE //</span>
+      <button class="mbtn-sm" id="profLogoutBtn">LOGOUT</button>
     </div>
-    <div class="prof-btns">
-      <button class="mbtn" id="profBackBtn">← BACK</button>
-      <button class="mbtn" id="profLogoutBtn" style="opacity:0.65">LOGOUT</button>
+    <!-- scrollable content -->
+    <div class="prof-scroll">
+      <div class="prof-header">
+        <div class="prof-avatar" id="profAvatar">🕹️</div>
+        <div class="prof-name"   id="profName">PLAYER</div>
+        <div class="prof-lvl"    id="profLvl">LEVEL 1</div>
+        <div class="xp-bar-outer"><div class="xp-bar-inner" id="xpBarFill" style="width:0%"></div></div>
+        <div class="xp-bar-lbl"  id="xpBarLbl">0 / 500 XP TO NEXT LEVEL</div>
+      </div>
+      <div class="prof-body">
+        <div class="prof-col">
+          <div class="prof-col-title">STATS</div>
+          <div class="stat-row"><span class="stat-k">GAMES</span>      <span class="stat-v" id="pGames">0</span></div>
+          <div class="stat-row"><span class="stat-k">WINS</span>       <span class="stat-v" id="pWins">0</span></div>
+          <div class="stat-row"><span class="stat-k">LOSSES</span>     <span class="stat-v" id="pLosses">0</span></div>
+          <div class="stat-row"><span class="stat-k">WIN RATE</span>   <span class="stat-v" id="pWinRate">—</span></div>
+          <div class="stat-row"><span class="stat-k">HIGH SCORE</span> <span class="stat-v" id="pHS">0</span></div>
+          <div class="stat-row"><span class="stat-k">BEST RALLY</span> <span class="stat-v" id="pRally">0</span></div>
+          <div class="stat-row"><span class="stat-k">MAX SPEED</span>  <span class="stat-v" id="pSpeed">0</span></div>
+          <div class="stat-row"><span class="stat-k">PLAY TIME</span>  <span class="stat-v" id="pTime">0:00</span></div>
+          <div class="stat-row"><span class="stat-k">WIN STREAK</span> <span class="stat-v" id="pStreak">0</span></div>
+        </div>
+        <div class="prof-col">
+          <div class="prof-col-title">ACHIEVEMENTS</div>
+          <div class="ach-grid" id="achGrid"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -603,10 +640,14 @@ function openProfile() {
     el.innerHTML = `<span class="ach-ico">${def.icon}</span><span class="ach-lbl">${def.label}</span>`;
     grid.appendChild(el);
   });
+  show(null);                    // hide start/pause/over before revealing profile
   ovProfile.classList.add('on');
 }
 
-document.getElementById('profBackBtn').addEventListener('click', () => ovProfile.classList.remove('on'));
+document.getElementById('profBackBtn').addEventListener('click', () => {
+  ovProfile.classList.remove('on');
+  show(ovStart);   // restore the start screen
+});
 document.getElementById('profLogoutBtn').addEventListener('click', () => {
   acctMgr.logout();
   ovProfile.classList.remove('on');
