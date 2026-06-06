@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src https://pong-api.trjbs.workers.dev https://api.pong.trijbsworld.nl;">
+<title>PONG // ADMIN</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #04040c; --teal: #00e8d8; --teal2: #00b8a9; --teal3: rgba(0,168,154,0.6);
+  --border: rgba(0,232,216,0.18); --card: rgba(0,232,216,0.03);
+  --danger: #ff6b6b; --warn: #f59e0b; --font: 'Share Tech Mono', monospace;
+}
+body { background: var(--bg); color: var(--teal); font-family: var(--font); min-height: 100vh; overflow: hidden; }
+
+/* ── Login ────────────────────────────────────────────────── */
+#loginWrap { display: flex; align-items: center; justify-content: center; height: 100vh; background: var(--bg); }
+.login-box { display: flex; flex-direction: column; align-items: center; gap: .7em; width: min(320px,90vw); }
+.login-title { font-size: clamp(1.4rem,4vw,2rem); color: var(--teal); text-shadow: 0 0 18px var(--teal); letter-spacing: .25em; }
+.login-sub   { font-size: .65rem; color: var(--teal3); letter-spacing: .4em; margin-bottom: .5em; }
+.inp  { width: 100%; font-family: var(--font); font-size: .75rem; letter-spacing: .1em;
+        background: rgba(0,232,216,.04); border: 1px solid var(--border); color: var(--teal);
+        padding: .5em .8em; outline: none; caret-color: var(--teal); }
+.inp:focus { border-color: rgba(0,232,216,.55); box-shadow: 0 0 8px rgba(0,232,216,.12); }
+.inp::placeholder { color: rgba(0,168,154,.3); }
+.login-err { font-size: .6rem; color: var(--danger); letter-spacing: .08em; min-height: 1em; text-align: center; }
+.btn-primary { font-family: var(--font); font-size: .72rem; letter-spacing: .15em; color: var(--teal);
+               background: transparent; border: 1px solid rgba(0,232,216,.4); padding: .5em 1.6em;
+               cursor: pointer; transition: all .2s; width: 100%; }
+.btn-primary:hover:not(:disabled) { background: rgba(0,232,216,.1); box-shadow: 0 0 14px rgba(0,232,216,.3); }
+.btn-primary:disabled { opacity: .5; cursor: default; }
+
+/* ── App shell ───────────────────────────────────────────── */
+#app { display: flex; height: 100vh; overflow: hidden; }
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+#sidebar { width: 180px; flex-shrink: 0; border-right: 1px solid var(--border);
+           display: flex; flex-direction: column; padding: 1.2em 0; background: rgba(0,232,216,.015); }
+.sidebar-logo { font-size: .6rem; color: var(--teal3); letter-spacing: .3em; padding: 0 1.2em 1em; border-bottom: 1px solid var(--border); margin-bottom: .6em; }
+.nav-item { font-family: var(--font); font-size: .62rem; letter-spacing: .12em; color: var(--teal3);
+            background: transparent; border: none; padding: .6em 1.2em; cursor: pointer; text-align: left;
+            width: 100%; transition: all .15s; border-left: 2px solid transparent; }
+.nav-item:hover  { color: var(--teal); background: rgba(0,232,216,.05); }
+.nav-item.active { color: var(--teal); border-left-color: var(--teal); background: rgba(0,232,216,.07); }
+.logout-btn { font-family: var(--font); font-size: .58rem; letter-spacing: .12em; color: rgba(0,168,154,.4);
+              background: transparent; border: none; border-top: 1px solid var(--border); padding: .7em 1.2em;
+              cursor: pointer; text-align: left; margin-top: auto; transition: color .2s; }
+.logout-btn:hover { color: var(--danger); }
+
+/* ── Main ────────────────────────────────────────────────── */
+#main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.topbar { display: flex; justify-content: space-between; align-items: center; padding: .65em 1.4em;
+          border-bottom: 1px solid var(--border); font-size: .62rem; letter-spacing: .2em; flex-shrink: 0; }
+.topbar-left { color: var(--teal); }
+.topbar-right { color: var(--teal3); }
+.sec { display: none; flex: 1; overflow-y: auto; padding: 1.2em 1.4em; }
+.sec.active { display: block; }
+
+/* ── KPI grid ────────────────────────────────────────────── */
+.kpi-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: .8em; margin-bottom: 1.4em; }
+.kpi-card { border: 1px solid var(--border); background: var(--card); padding: .9em 1em; }
+.kpi-val  { font-size: clamp(1.4rem,2.5vw,2rem); color: var(--teal); text-shadow: 0 0 10px rgba(0,232,216,.35); letter-spacing: .05em; }
+.kpi-lbl  { font-size: .5rem; color: var(--teal3); letter-spacing: .2em; margin-top: .2em; }
+.kpi-sub  { font-size: .5rem; color: var(--teal2); letter-spacing: .1em; margin-top: .1em; opacity: .7; }
+.sec-title { font-size: .6rem; color: var(--teal3); letter-spacing: .3em; margin-bottom: 1em;
+             border-bottom: 1px solid var(--border); padding-bottom: .5em; }
+
+/* ── Toolbar ─────────────────────────────────────────────── */
+.toolbar { display: flex; gap: .5em; align-items: center; margin-bottom: .9em; flex-wrap: wrap; }
+.toolbar-label { font-size: .55rem; color: var(--teal3); letter-spacing: .15em; }
+.inp-sm { font-family: var(--font); font-size: .6rem; letter-spacing: .08em; color: var(--teal);
+          background: rgba(0,232,216,.04); border: 1px solid var(--border); padding: .35em .65em;
+          outline: none; caret-color: var(--teal); min-width: 180px; }
+.inp-sm::placeholder { color: rgba(0,168,154,.3); }
+.inp-sm:focus { border-color: rgba(0,232,216,.5); }
+.sel-sm { font-family: var(--font); font-size: .58rem; letter-spacing: .08em; color: var(--teal);
+          background: var(--bg); border: 1px solid var(--border); padding: .35em .6em; cursor: pointer; }
+.btn-sm { font-family: var(--font); font-size: .58rem; letter-spacing: .1em; color: var(--teal);
+          background: transparent; border: 1px solid var(--border); padding: .35em .8em;
+          cursor: pointer; transition: all .15s; }
+.btn-sm:hover { background: rgba(0,232,216,.1); border-color: var(--teal); }
+.btn-dim { color: var(--teal3); }
+.rank-btn { font-family: var(--font); font-size: .55rem; letter-spacing: .1em; color: var(--teal3);
+            background: transparent; border: 1px solid rgba(0,232,216,.2); padding: .3em .7em;
+            cursor: pointer; transition: all .15s; }
+.rank-btn:hover, .rank-btn.active { color: var(--teal); border-color: var(--teal); background: rgba(0,232,216,.08); }
+
+/* ── Tables ──────────────────────────────────────────────── */
+.tbl { width: 100%; border-collapse: collapse; font-size: .6rem; letter-spacing: .06em; }
+.tbl th { color: var(--teal3); font-weight: normal; letter-spacing: .15em; padding: .5em .7em;
+          border-bottom: 1px solid var(--border); text-align: left; }
+.tbl td { padding: .5em .7em; border-bottom: 1px solid rgba(0,232,216,.06); color: rgba(0,232,216,.85); vertical-align: middle; }
+.tbl tr:hover td { background: rgba(0,232,216,.03); }
+.badge { font-size: .5rem; letter-spacing: .1em; padding: .15em .5em; border: 1px solid; }
+.badge-ok  { color: var(--teal2); border-color: rgba(0,184,169,.3); }
+.badge-ban { color: var(--danger); border-color: rgba(255,107,107,.3); }
+.action-btn { font-family: var(--font); font-size: .5rem; letter-spacing: .08em; color: var(--teal3);
+              background: transparent; border: 1px solid rgba(0,232,216,.2); padding: .18em .5em;
+              cursor: pointer; transition: all .15s; margin-right: .25em; }
+.action-btn:hover { color: var(--teal); border-color: var(--teal); }
+.action-btn.del { color: rgba(255,107,107,.6); border-color: rgba(255,107,107,.25); }
+.action-btn.del:hover { color: var(--danger); border-color: var(--danger); }
+.loading { color: var(--teal3); font-size: .6rem; letter-spacing: .2em; padding: 2em; text-align: center; }
+
+/* ── Pagination ──────────────────────────────────────────── */
+.pager { display: flex; gap: .4em; align-items: center; margin-top: .8em; }
+.pager-btn { font-family: var(--font); font-size: .55rem; letter-spacing: .08em; color: var(--teal3);
+             background: transparent; border: 1px solid rgba(0,232,216,.2); padding: .25em .6em; cursor: pointer; }
+.pager-btn:hover:not(:disabled) { color: var(--teal); border-color: var(--teal); }
+.pager-btn:disabled { opacity: .35; cursor: default; }
+.pager-btn.cur { color: var(--teal); border-color: var(--teal); background: rgba(0,232,216,.08); }
+.pager-info { font-size: .52rem; color: var(--teal3); letter-spacing: .1em; }
+
+/* ── Modal ───────────────────────────────────────────────── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(4,4,12,.9); display: flex;
+                 align-items: center; justify-content: center; z-index: 100; }
+.modal { background: #070710; border: 1px solid var(--border); width: min(680px,95vw);
+         max-height: 90vh; overflow-y: auto; padding: 1.4em; position: relative; }
+.modal-close { position: absolute; top: .8em; right: .9em; font-family: var(--font); font-size: .7rem;
+               color: var(--teal3); background: transparent; border: none; cursor: pointer; }
+.modal-close:hover { color: var(--teal); }
+.modal-header { display: flex; align-items: center; gap: .8em; margin-bottom: 1em; border-bottom: 1px solid var(--border); padding-bottom: .8em; }
+.modal-avatar { font-size: 2rem; line-height: 1; }
+.modal-name   { font-size: 1.1rem; color: var(--teal); text-shadow: 0 0 10px var(--teal); letter-spacing: .15em; }
+.modal-lvl    { font-size: .55rem; color: var(--teal3); letter-spacing: .2em; margin-top: .15em; }
+.modal-body   { display: grid; grid-template-columns: 1fr 1fr; gap: 1em; margin-bottom: 1em; }
+.modal-col-title { font-size: .5rem; color: var(--teal3); letter-spacing: .25em; border-bottom: 1px solid rgba(0,232,216,.08); padding-bottom: .25em; margin-bottom: .4em; }
+.stat-row { display: flex; justify-content: space-between; font-size: .57rem; letter-spacing: .06em; margin-bottom: .2em; }
+.stat-k { color: var(--teal3); }
+.stat-v { color: var(--teal); }
+.ach-grid-sm { display: grid; grid-template-columns: repeat(4,1fr); gap: .25em; margin-top: .3em; }
+.ach-sm { text-align: center; font-size: .65rem; padding: .2em; border: 1px solid rgba(0,232,216,.06); opacity: .25; filter: grayscale(1); }
+.ach-sm.got { opacity: 1; filter: none; border-color: rgba(0,232,216,.25); }
+.ach-sm-lbl { font-size: .35rem; color: var(--teal3); letter-spacing: .03em; display: block; }
+.modal-actions { display: flex; gap: .5em; flex-wrap: wrap; padding-top: .8em; border-top: 1px solid rgba(0,232,216,.08); }
+.modal-btn { font-family: var(--font); font-size: .6rem; letter-spacing: .1em; color: var(--teal);
+             background: transparent; border: 1px solid rgba(0,232,216,.35); padding: .4em 1em; cursor: pointer; }
+.modal-btn:hover { background: rgba(0,232,216,.1); }
+.modal-btn.danger { color: var(--danger); border-color: rgba(255,107,107,.35); }
+.modal-btn.danger:hover { background: rgba(255,107,107,.1); }
+
+/* ── Config ──────────────────────────────────────────────── */
+.config-split { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4em; }
+.config-col-title { font-size: .55rem; color: var(--teal3); letter-spacing: .25em; border-bottom: 1px solid var(--border); padding-bottom: .4em; margin-bottom: .8em; }
+.cfg-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: .6em; margin-bottom: .5em; }
+.cfg-lbl { font-size: .55rem; color: var(--teal3); letter-spacing: .1em; }
+.cfg-inp { font-family: var(--font); font-size: .6rem; letter-spacing: .08em; color: var(--teal);
+           background: rgba(0,232,216,.04); border: 1px solid var(--border); padding: .3em .5em;
+           outline: none; width: 70px; text-align: right; caret-color: var(--teal); }
+.cfg-inp:focus { border-color: rgba(0,232,216,.5); }
+.save-btn { font-family: var(--font); font-size: .6rem; letter-spacing: .12em; color: var(--teal);
+            background: transparent; border: 1px solid rgba(0,232,216,.4); padding: .4em 1.2em;
+            cursor: pointer; margin-top: .6em; transition: all .2s; }
+.save-btn:hover { background: rgba(0,232,216,.1); }
+.ach-item-row { display: flex; align-items: center; gap: .6em; padding: .4em 0; border-bottom: 1px solid rgba(0,232,216,.06); font-size: .58rem; }
+.ach-icon { font-size: .9rem; line-height: 1; }
+.ach-info { flex: 1; }
+.ach-label { color: var(--teal); letter-spacing: .08em; }
+.ach-desc  { color: var(--teal3); font-size: .5rem; letter-spacing: .05em; margin-top: .1em; }
+
+/* ── Toast ───────────────────────────────────────────────── */
+.toast-wrap { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 200;
+              display: flex; flex-direction: column; gap: 5px; pointer-events: none; }
+.toast { font-family: var(--font); font-size: .58rem; letter-spacing: .1em; padding: .35em .9em;
+         border: 1px solid; white-space: nowrap; animation: tIn .25s ease, tOut .3s ease 2.5s forwards; }
+.toast-ok  { background: rgba(0,232,216,.08); border-color: rgba(0,232,216,.3); color: var(--teal); }
+.toast-err { background: rgba(255,107,107,.08); border-color: rgba(255,107,107,.3); color: var(--danger); }
+@keyframes tIn  { from { opacity:0; transform:translateY(-5px) } to { opacity:1; transform:none } }
+@keyframes tOut { to { opacity:0; transform:translateY(-5px) } }
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN ──────────────────────────────────────────────── -->
+<div id="loginWrap">
+  <div class="login-box">
+    <div class="login-title">PONG // PHOSPHOR</div>
+    <div class="login-sub">// ADMIN PANEL //</div>
+    <input id="adminUser" class="inp" type="text" placeholder="USERNAME" autocomplete="off" autocapitalize="none" spellcheck="false">
+    <input id="adminPass" class="inp" type="password" placeholder="PASSWORD">
+    <div id="loginErr" class="login-err"></div>
+    <button id="loginBtn" class="btn-primary">LOGIN</button>
+  </div>
+</div>
+
+<!-- ── APP ────────────────────────────────────────────────── -->
+<div id="app" style="display:none">
+
+  <aside id="sidebar">
+    <div class="sidebar-logo">// ADMIN //</div>
+    <nav>
+      <button class="nav-item active" data-sec="dashboard">◈  DASHBOARD</button>
+      <button class="nav-item" data-sec="users">◈  USERS</button>
+      <button class="nav-item" data-sec="leaderboard">◈  LEADERBOARD</button>
+      <button class="nav-item" data-sec="games">◈  GAMES</button>
+      <button class="nav-item" data-sec="config">◈  CONFIG</button>
+    </nav>
+    <button id="logoutBtn" class="logout-btn">LOGOUT</button>
+  </aside>
+
+  <main id="main">
+    <header class="topbar">
+      <span class="topbar-left" id="topLabel">DASHBOARD</span>
+      <span class="topbar-right" id="topAdmin"></span>
+    </header>
+
+    <!-- DASHBOARD -->
+    <section id="secDashboard" class="sec active">
+      <div class="sec-title">OVERVIEW</div>
+      <div class="kpi-grid" id="kpiGrid"><div class="loading">LOADING...</div></div>
+      <div class="sec-title" style="margin-top:1em">LAST 7 DAYS</div>
+      <div class="kpi-grid" id="kpiGrid7d"></div>
+    </section>
+
+    <!-- USERS -->
+    <section id="secUsers" class="sec">
+      <div class="sec-title">USER MANAGEMENT</div>
+      <div class="toolbar">
+        <input id="userSearch" class="inp-sm" type="text" placeholder="SEARCH USERNAME OR EMAIL...">
+        <select id="userSort" class="sel-sm">
+          <option value="created_at">NEWEST FIRST</option>
+          <option value="xp">MOST XP</option>
+          <option value="wins">MOST WINS</option>
+          <option value="games_played">MOST GAMES</option>
+        </select>
+        <button id="userSearchBtn" class="btn-sm">SEARCH</button>
+      </div>
+      <div id="usersTable"><div class="loading">LOADING...</div></div>
+      <div id="usersPager" class="pager"></div>
+    </section>
+
+    <!-- LEADERBOARD -->
+    <section id="secLeaderboard" class="sec">
+      <div class="sec-title">LEADERBOARD</div>
+      <div class="toolbar">
+        <span class="toolbar-label">RANK BY:</span>
+        <button class="rank-btn active" data-by="xp">XP</button>
+        <button class="rank-btn" data-by="wins">WINS</button>
+        <button class="rank-btn" data-by="streak">STREAK</button>
+        <button class="rank-btn" data-by="games_played">GAMES</button>
+        <button class="rank-btn" data-by="high_score">HIGH SCORE</button>
+      </div>
+      <div id="lbTable"><div class="loading">LOADING...</div></div>
+    </section>
+
+    <!-- GAMES -->
+    <section id="secGames" class="sec">
+      <div class="sec-title">GAME LOG</div>
+      <div class="toolbar">
+        <input id="gamesUser" class="inp-sm" type="text" placeholder="FILTER BY USERNAME...">
+        <button id="gamesFilterBtn" class="btn-sm">FILTER</button>
+        <button id="gamesClearBtn" class="btn-sm btn-dim">CLEAR</button>
+      </div>
+      <div id="gamesTable"><div class="loading">LOADING...</div></div>
+      <div id="gamesPager" class="pager"></div>
+    </section>
+
+    <!-- CONFIG -->
+    <section id="secConfig" class="sec">
+      <div class="sec-title">CONFIGURATION</div>
+      <div class="config-split">
+        <div>
+          <div class="config-col-title">GAME SETTINGS</div>
+          <div id="configForm"><div class="loading">LOADING...</div></div>
+        </div>
+        <div>
+          <div class="config-col-title">ACHIEVEMENTS</div>
+          <div id="achList"><div class="loading">LOADING...</div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ── USER MODAL ──────────────────────────────────────────── -->
+<div id="userModal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <button id="modalClose" class="modal-close">✕ CLOSE</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<div id="toastWrap" class="toast-wrap"></div>
+
+<script>
+'use strict';
+
+const API = 'https://pong-api.trjbs.workers.dev'; // switch to https://api.pong.trijbsworld.nl once DNS resolves
+const LEVELS = xp => Math.floor((xp||0)/500)+1;
+const XP_PCT = xp => (((xp||0)%500)/500*100).toFixed(0);
+const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const el  = id => document.getElementById(id);
+const fmt = n => Number(n||0).toLocaleString();
+const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'2-digit'}) : '—';
+
+let token = sessionStorage.getItem('pong_admin_token') || null;
+let adminName = sessionStorage.getItem('pong_admin_name') || '';
+
+const state = {
+  users:  { page:1, search:'', sort:'created_at', dir:'desc' },
+  games:  { page:1, userFilter:'' },
+  lb:     { by:'xp' },
+};
+
+// ── API ───────────────────────────────────────────────────────
+async function api(path, opts={}) {
+  try {
+    const res = await fetch(API+path, {
+      ...opts,
+      headers: { 'Content-Type':'application/json', ...(token?{'Authorization':`Bearer ${token}`}:{}), ...(opts.headers||{}) },
+    });
+    if (res.status===401) { logout(); return null; }
+    const data = await res.json().catch(()=>({error:'Parse error'}));
+    return { ok:res.ok, status:res.status, data };
+  } catch(e) { toast('CONNECTION ERROR','err'); return null; }
+}
+
+// ── Toast ─────────────────────────────────────────────────────
+function toast(msg, type='ok') {
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.textContent = msg;
+  el('toastWrap').appendChild(t);
+  setTimeout(()=>t.remove(), 3200);
+}
+
+// ── Auth ──────────────────────────────────────────────────────
+async function login() {
+  const u = el('adminUser').value.trim();
+  const p = el('adminPass').value;
+  el('loginErr').textContent = '';
+  el('loginBtn').textContent = 'LOGGING IN...';
+  el('loginBtn').disabled = true;
+  const r = await api('/api/admin/auth', { method:'POST', body:JSON.stringify({username:u,password:p}) });
+  el('loginBtn').textContent = 'LOGIN';
+  el('loginBtn').disabled = false;
+  if (!r||!r.ok) { el('loginErr').textContent = r?.data?.error||'CONNECTION ERROR'; return; }
+  token     = r.data.token;
+  adminName = u.toUpperCase();
+  sessionStorage.setItem('pong_admin_token', token);
+  sessionStorage.setItem('pong_admin_name',  adminName);
+  showApp();
+}
+
+function logout() {
+  token = null; adminName = '';
+  sessionStorage.clear();
+  el('app').style.display = 'none';
+  el('loginWrap').style.display = 'flex';
+  el('adminUser').value = ''; el('adminPass').value = ''; el('loginErr').textContent = '';
+}
+
+// ── Sections ──────────────────────────────────────────────────
+function showSection(name) {
+  document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active', b.dataset.sec===name));
+  el(`sec${name.charAt(0).toUpperCase()+name.slice(1)}`).classList.add('active');
+  el('topLabel').textContent = name.toUpperCase();
+  if (name==='dashboard')   loadDashboard();
+  if (name==='users')       loadUsers();
+  if (name==='leaderboard') loadLeaderboard();
+  if (name==='games')       loadGames();
+  if (name==='config')      loadConfig();
+}
+
+function showApp() {
+  el('loginWrap').style.display = 'none';
+  el('app').style.display = 'flex';
+  el('topAdmin').textContent = adminName;
+  showSection('dashboard');
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────
+async function loadDashboard() {
+  const r = await api('/api/admin/stats');
+  if (!r||!r.ok) { el('kpiGrid').innerHTML = '<div class="loading">ERROR LOADING STATS</div>'; return; }
+  const d = r.data;
+  const cards = [
+    { v:fmt(d.total_users),              l:'TOTAL USERS',      s:`${fmt(d.banned_users)} banned` },
+    { v:fmt(d.total_games),              l:'TOTAL GAMES',      s:`all time` },
+    { v:fmt(d.total_xp),                 l:'TOTAL XP',         s:`distributed` },
+    { v:fmt(d.total_achievements_earned),l:'ACHIEVEMENTS',     s:`earned` },
+  ];
+  const cards7 = [
+    { v:fmt(d.new_users_7d),  l:'NEW USERS',   s:`this week` },
+    { v:fmt(d.games_7d),      l:'GAMES PLAYED',s:`this week` },
+    { v:fmt(d.wins_7d),       l:'WINS',         s:`this week` },
+    { v:fmt(d.xp_7d),         l:'XP EARNED',   s:`this week` },
+  ];
+  el('kpiGrid').innerHTML   = cards.map(c=>`<div class="kpi-card"><div class="kpi-val">${esc(c.v)}</div><div class="kpi-lbl">${esc(c.l)}</div><div class="kpi-sub">${esc(c.s)}</div></div>`).join('');
+  el('kpiGrid7d').innerHTML = cards7.map(c=>`<div class="kpi-card"><div class="kpi-val">${esc(c.v)}</div><div class="kpi-lbl">${esc(c.l)}</div><div class="kpi-sub">${esc(c.s)}</div></div>`).join('');
+}
+
+// ── USERS ─────────────────────────────────────────────────────
+async function loadUsers() {
+  const s = state.users;
+  el('usersTable').innerHTML = '<div class="loading">LOADING...</div>';
+  const qs = new URLSearchParams({ page:s.page, limit:20, sort:s.sort, dir:s.dir, ...(s.search?{search:s.search}:{}) });
+  const r = await api(`/api/admin/users?${qs}`);
+  if (!r||!r.ok) { el('usersTable').innerHTML = '<div class="loading">ERROR</div>'; return; }
+  const { users, total, pages } = r.data;
+
+  if (!users.length) { el('usersTable').innerHTML = '<div class="loading">NO USERS FOUND</div>'; el('usersPager').innerHTML=''; return; }
+
+  el('usersTable').innerHTML = `
+    <table class="tbl">
+      <thead><tr>
+        <th>#</th><th>PLAYER</th><th>EMAIL</th><th>XP / LVL</th>
+        <th>GAMES</th><th>W / L</th><th>SINCE</th><th>STATUS</th><th>ACTIONS</th>
+      </tr></thead>
+      <tbody>
+        ${users.map((u,i)=>`<tr>
+          <td>${(s.page-1)*20+i+1}</td>
+          <td>${esc(u.avatar||'🕹️')} ${esc(u.username)}</td>
+          <td style="color:var(--teal3);font-size:.55rem">${esc(u.email||'')}</td>
+          <td>${fmt(u.xp)} <span style="color:var(--teal3)">LV${LEVELS(u.xp)}</span></td>
+          <td>${fmt(u.games_played)}</td>
+          <td>${fmt(u.wins)} / ${fmt(u.losses)}</td>
+          <td style="color:var(--teal3)">${fmtDate(u.created_at)}</td>
+          <td><span class="badge ${u.banned?'badge-ban':'badge-ok'}">${u.banned?'BANNED':'ACTIVE'}</span></td>
+          <td>
+            <button class="action-btn" onclick="viewUser('${esc(u.id)}')">VIEW</button>
+            <button class="action-btn" onclick="banUser('${esc(u.id)}','${esc(u.username)}')">${u.banned?'UNBAN':'BAN'}</button>
+            <button class="action-btn" onclick="resetPw('${esc(u.id)}','${esc(u.username)}')">RESET PW</button>
+            <button class="action-btn del" onclick="deleteUser('${esc(u.id)}','${esc(u.username)}')">DEL</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+
+  // Pagination
+  const pg = el('usersPager');
+  pg.innerHTML = '';
+  if (pages <= 1) return;
+  const mkBtn = (label, page, cur) => {
+    const b = document.createElement('button');
+    b.className = 'pager-btn' + (cur?' cur':'');
+    b.textContent = label;
+    b.disabled = cur;
+    b.onclick = () => { state.users.page = page; loadUsers(); };
+    pg.appendChild(b);
+  };
+  mkBtn('←', s.page-1, s.page===1);
+  for (let i=Math.max(1,s.page-2); i<=Math.min(pages,s.page+2); i++) mkBtn(i, i, i===s.page);
+  mkBtn('→', s.page+1, s.page===pages);
+  const info = document.createElement('span');
+  info.className = 'pager-info';
+  info.textContent = `PAGE ${s.page} / ${pages} — ${total} USERS`;
+  pg.appendChild(info);
+}
+
+async function viewUser(id) {
+  el('modalContent').innerHTML = '<div class="loading">LOADING...</div>';
+  el('userModal').style.display = 'flex';
+  const r = await api(`/api/admin/users/${id}`);
+  if (!r||!r.ok) { el('modalContent').innerHTML = '<div class="loading">ERROR</div>'; return; }
+  const u = r.data;
+  const lv = LEVELS(u.xp);
+  const wr = u.games_played ? ((u.wins/u.games_played)*100).toFixed(0)+'%' : '—';
+  const sec = u.total_play_time_sec||0;
+  const tStr = sec>=3600 ? `${Math.floor(sec/3600)}h ${Math.floor((sec%3600)/60)}m` : `${Math.floor(sec/60)}m`;
+
+  const ACHS = [
+    {id:'first_win',icon:'🏆',label:'FIRST WIN'},{id:'win_streak_3',icon:'🎩',label:'HAT TRICK'},
+    {id:'win_streak_5',icon:'🔥',label:'STREAK x5'},{id:'shutout',icon:'💀',label:'SHUTOUT'},
+    {id:'rally_10',icon:'🙌',label:'HOT HANDS'},{id:'rally_20',icon:'⚡',label:'RALLY KING'},
+    {id:'speed_demon',icon:'💨',label:'SPEED DEMON'},{id:'games_10',icon:'🎮',label:'VETERAN'},
+    {id:'games_50',icon:'👑',label:'LEGEND'},{id:'level_5',icon:'⬆️',label:'LEVEL 5'},
+    {id:'level_10',icon:'💎',label:'LEVEL 10'},{id:'play_hour',icon:'⏰',label:'DEDICATED'},
+    {id:'comeback',icon:'↩️',label:'COMEBACK'},
+  ];
+
+  el('modalContent').innerHTML = `
+    <div class="modal-header">
+      <div class="modal-avatar">${esc(u.avatar||'🕹️')}</div>
+      <div>
+        <div class="modal-name">${esc(u.username)}</div>
+        <div class="modal-lvl">LEVEL ${lv} · ${fmt(u.xp)} XP · ${u.banned?'<span style="color:var(--danger)">BANNED</span>':'ACTIVE'}</div>
+        <div class="modal-lvl" style="margin-top:.1em;font-size:.48rem">${esc(u.email||'')}</div>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="modal-col-title">STATS</div>
+        ${[['GAMES',fmt(u.games_played)],['WINS',fmt(u.wins)],['LOSSES',fmt(u.losses)],
+           ['WIN RATE',wr],['HIGH SCORE',fmt(u.high_score)],['BEST RALLY',fmt(u.longest_rally)],
+           ['MAX SPEED',u.max_ball_speed||0],['PLAY TIME',tStr],['WIN STREAK',fmt(u.streak)],
+           ['MEMBER SINCE',fmtDate(u.created_at)]]
+          .map(([k,v])=>`<div class="stat-row"><span class="stat-k">${k}</span><span class="stat-v">${esc(String(v))}</span></div>`).join('')}
+      </div>
+      <div>
+        <div class="modal-col-title">ACHIEVEMENTS</div>
+        <div class="ach-grid-sm">
+          ${ACHS.map(a=>`<div class="ach-sm ${u.achievements[a.id]?'got':''}" title="${esc(a.label)}">
+            <span>${a.icon}</span><span class="ach-sm-lbl">${esc(a.label)}</span>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+    ${u.recent_games?.length ? `
+      <div class="modal-col-title">RECENT GAMES</div>
+      <table class="tbl" style="font-size:.53rem">
+        <thead><tr><th>RESULT</th><th>SCORE</th><th>MODE</th><th>RALLY</th><th>DATE</th></tr></thead>
+        <tbody>${u.recent_games.map(g=>`<tr>
+          <td style="color:${g.won?'var(--teal)':'var(--danger)'}">${g.won?'WIN':'LOSS'}</td>
+          <td>${g.player_score} — ${g.ai_score}</td>
+          <td>${esc(g.mode||'single')}</td>
+          <td>${g.rally_max||0}</td>
+          <td style="color:var(--teal3)">${fmtDate(g.played_at)}</td>
+        </tr>`).join('')}</tbody>
+      </table>` : ''}
+    <div class="modal-actions">
+      <button class="modal-btn" onclick="banUser('${esc(u.id)}','${esc(u.username)}',true)">${u.banned?'UNBAN USER':'BAN USER'}</button>
+      <button class="modal-btn" onclick="resetPw('${esc(u.id)}','${esc(u.username)}',true)">RESET PASSWORD</button>
+      <button class="modal-btn danger" onclick="deleteUser('${esc(u.id)}','${esc(u.username)}',true)">DELETE ACCOUNT</button>
+    </div>`;
+}
+
+async function banUser(id, username, fromModal=false) {
+  if (!confirm(`${fromModal?'':''}Toggle ban for ${username}?`)) return;
+  const r = await api(`/api/admin/users/${id}/ban`, { method:'POST' });
+  if (!r||!r.ok) { toast('ERROR: '+( r?.data?.error||''), 'err'); return; }
+  toast(`${username} ${r.data.banned?'BANNED':'UNBANNED'}`, 'ok');
+  if (fromModal) el('userModal').style.display='none';
+  loadUsers();
+}
+
+async function resetPw(id, username, fromModal=false) {
+  if (!confirm(`Reset password for ${username}? A temporary password will be generated.`)) return;
+  const r = await api(`/api/admin/users/${id}/reset-password`, { method:'POST' });
+  if (!r||!r.ok) { toast('ERROR', 'err'); return; }
+  alert(`TEMP PASSWORD FOR ${username}:\n\n${r.data.tempPassword}\n\nShare this and ask them to change it immediately.`);
+  toast(`PASSWORD RESET FOR ${username}`, 'ok');
+  if (fromModal) el('userModal').style.display='none';
+}
+
+async function deleteUser(id, username, fromModal=false) {
+  if (!confirm(`DELETE ${username}?\n\nThis is permanent. All stats and achievements will be lost.`)) return;
+  const r = await api(`/api/admin/users/${id}`, { method:'DELETE' });
+  if (!r||!r.ok) { toast('ERROR: '+(r?.data?.error||''), 'err'); return; }
+  toast(`${username} DELETED`, 'ok');
+  if (fromModal) el('userModal').style.display='none';
+  loadUsers();
+}
+
+// ── LEADERBOARD ───────────────────────────────────────────────
+async function loadLeaderboard() {
+  el('lbTable').innerHTML = '<div class="loading">LOADING...</div>';
+  const r = await api(`/api/admin/leaderboard?by=${state.lb.by}&limit=50`);
+  if (!r||!r.ok) { el('lbTable').innerHTML = '<div class="loading">ERROR</div>'; return; }
+  const { leaderboard, by } = r.data;
+  if (!leaderboard.length) { el('lbTable').innerHTML = '<div class="loading">NO DATA</div>'; return; }
+  const colLabel = {xp:'XP',wins:'WINS',streak:'STREAK',games_played:'GAMES',high_score:'HIGH SCORE'}[by]||by;
+  const colVal   = u => ({xp:fmt(u.xp),wins:fmt(u.wins),streak:fmt(u.streak),games_played:fmt(u.games_played),high_score:fmt(u.high_score)})[by]||'—';
+  el('lbTable').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>#</th><th>PLAYER</th><th>${colLabel}</th><th>GAMES</th><th>W / L</th><th>LEVEL</th></tr></thead>
+      <tbody>${leaderboard.map((u,i)=>`<tr>
+        <td style="color:${i<3?'var(--teal)':'var(--teal3)'}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</td>
+        <td>${esc(u.avatar||'🕹️')} ${esc(u.username)}</td>
+        <td style="color:var(--teal);font-weight:bold">${colVal(u)}</td>
+        <td>${fmt(u.games_played)}</td>
+        <td>${fmt(u.wins)} / ${fmt(u.losses)}</td>
+        <td style="color:var(--teal3)">LV${LEVELS(u.xp)}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+}
+
+// ── GAMES ─────────────────────────────────────────────────────
+async function loadGames() {
+  const s = state.games;
+  el('gamesTable').innerHTML = '<div class="loading">LOADING...</div>';
+  const qs = new URLSearchParams({ page:s.page, limit:25, ...(s.userFilter?{user:s.userFilter}:{}) });
+  const r = await api(`/api/admin/games?${qs}`);
+  if (!r||!r.ok) { el('gamesTable').innerHTML = '<div class="loading">ERROR</div>'; return; }
+  const { games, total, pages } = r.data;
+  if (!games.length) { el('gamesTable').innerHTML = '<div class="loading">NO GAMES FOUND</div>'; el('gamesPager').innerHTML=''; return; }
+  el('gamesTable').innerHTML = `
+    <table class="tbl">
+      <thead><tr><th>PLAYER</th><th>RESULT</th><th>SCORE</th><th>MODE</th><th>RALLY</th><th>MAX SPEED</th><th>DURATION</th><th>DATE</th></tr></thead>
+      <tbody>${games.map(g=>`<tr>
+        <td>${esc(g.username||'GUEST')}</td>
+        <td style="color:${g.won?'var(--teal)':'var(--danger)'}">${g.won?'WIN':'LOSS'}</td>
+        <td>${g.player_score??'?'} — ${g.ai_score??'?'}</td>
+        <td style="color:var(--teal3)">${esc(g.mode||'single')}</td>
+        <td>${g.rally_max||0}</td>
+        <td>${Number(g.max_speed||0).toFixed(1)}</td>
+        <td style="color:var(--teal3)">${g.play_time_sec?Math.round(g.play_time_sec)+'s':'—'}</td>
+        <td style="color:var(--teal3)">${fmtDate(g.played_at)}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+
+  // Pagination
+  const pg = el('gamesPager');
+  pg.innerHTML = '';
+  if (pages<=1) return;
+  const mkBtn = (label, page, cur) => {
+    const b = document.createElement('button');
+    b.className = 'pager-btn'+(cur?' cur':'');
+    b.textContent = label; b.disabled = cur;
+    b.onclick = () => { state.games.page=page; loadGames(); };
+    pg.appendChild(b);
+  };
+  mkBtn('←', s.page-1, s.page===1);
+  for (let i=Math.max(1,s.page-2); i<=Math.min(pages,s.page+2); i++) mkBtn(i, i, i===s.page);
+  mkBtn('→', s.page+1, s.page===pages);
+  const info = document.createElement('span');
+  info.className='pager-info'; info.textContent=`PAGE ${s.page} / ${pages} — ${total} GAMES`;
+  pg.appendChild(info);
+}
+
+// ── CONFIG ────────────────────────────────────────────────────
+async function loadConfig() {
+  const r = await api('/api/admin/config');
+  if (!r||!r.ok) { el('configForm').innerHTML='<div class="loading">ERROR</div>'; return; }
+  const { game_settings:gs, achievements:achs } = r.data;
+  const cfg = gs||{};
+
+  const fields = [
+    ['win_score',     'WIN SCORE (SP)',     cfg.win_score||7],
+    ['ai_win_score',  'WIN SCORE (AI DUEL)',cfg.ai_win_score||13],
+    ['max_ball_speed','MAX BALL SPEED',     cfg.max_ball_speed||13],
+    ['init_speed',    'INITIAL SPEED',      cfg.init_speed||5],
+    ['xp_per_win',    'XP PER WIN',         cfg.xp_per_win||50],
+    ['xp_per_game',   'XP BASE PER GAME',   cfg.xp_per_game||20],
+    ['xp_per_point',  'XP PER POINT',       cfg.xp_per_point||5],
+  ];
+
+  el('configForm').innerHTML = `
+    ${fields.map(([key,label,val])=>`
+      <div class="cfg-row">
+        <label class="cfg-lbl" for="cfg_${key}">${label}</label>
+        <input class="cfg-inp" id="cfg_${key}" type="number" value="${val}" min="1" max="999">
+      </div>`).join('')}
+    <button class="save-btn" id="cfgSaveBtn">SAVE SETTINGS</button>`;
+
+  el('cfgSaveBtn').addEventListener('click', async () => {
+    const body = {};
+    fields.forEach(([key])=>{ body[key]=parseFloat(el('cfg_'+key).value)||0; });
+    el('cfgSaveBtn').textContent = 'SAVING...'; el('cfgSaveBtn').disabled=true;
+    const r2 = await api('/api/admin/config', { method:'PUT', body:JSON.stringify(body) });
+    el('cfgSaveBtn').textContent='SAVE SETTINGS'; el('cfgSaveBtn').disabled=false;
+    toast(r2?.ok ? 'SETTINGS SAVED' : 'ERROR SAVING', r2?.ok?'ok':'err');
+  });
+
+  const achItems = achs?.items||[];
+  el('achList').innerHTML = achItems.length
+    ? achItems.map(a=>`<div class="ach-item-row">
+        <span class="ach-icon">${a.icon}</span>
+        <div class="ach-info">
+          <div class="ach-label">${esc(a.label)}</div>
+          <div class="ach-desc">${esc(a.desc||'')}</div>
+        </div>
+      </div>`).join('')
+    : '<div class="loading">NO ACHIEVEMENTS CONFIGURED</div>';
+}
+
+// ── Init ──────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  if (token) showApp();
+
+  el('loginBtn').addEventListener('click', login);
+  el('adminPass').addEventListener('keydown', e => e.key==='Enter' && login());
+  el('logoutBtn').addEventListener('click', logout);
+  el('modalClose').addEventListener('click', ()=>el('userModal').style.display='none');
+  el('userModal').addEventListener('click', e=>{ if(e.target===el('userModal')) el('userModal').style.display='none'; });
+
+  document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>showSection(b.dataset.sec)));
+
+  el('userSearchBtn').addEventListener('click',()=>{ state.users.search=el('userSearch').value.trim(); state.users.page=1; loadUsers(); });
+  el('userSearch').addEventListener('keydown',e=>e.key==='Enter'&&el('userSearchBtn').click());
+  el('userSort').addEventListener('change',()=>{ state.users.sort=el('userSort').value; state.users.page=1; loadUsers(); });
+
+  document.querySelectorAll('.rank-btn').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('.rank-btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); state.lb.by=b.dataset.by; loadLeaderboard();
+  }));
+
+  el('gamesFilterBtn').addEventListener('click',()=>{ state.games.userFilter=el('gamesUser').value.trim(); state.games.page=1; loadGames(); });
+  el('gamesClearBtn').addEventListener('click',()=>{ el('gamesUser').value=''; state.games.userFilter=''; state.games.page=1; loadGames(); });
+  el('gamesUser').addEventListener('keydown',e=>e.key==='Enter'&&el('gamesFilterBtn').click());
+});
+</script>
+</body>
+</html>
