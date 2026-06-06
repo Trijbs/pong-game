@@ -408,13 +408,15 @@ function update() {
 }
 
 function updateAI() {
-  const total = lp.score + rp.score;
-  const spd   = Math.min(3.2 + total * 0.2, 5.5);
-  // Imperfect aim: wobble target
-  const wobble = (Math.sin(Date.now() * 0.003) * 8);
-  const target = ball.y - PH/2 + wobble;
-  const diff   = target - rp.y;
-  if (Math.abs(diff) > spd) rp.y += diff > 0 ? spd : -spd;
+  // Speed scales with total score (3.2 → 5.5), capped so player can always win
+  const total    = lp.score + rp.score;
+  const spd      = Math.min(3.2 + total * 0.2, 5.5);
+  const deadzone = PH * 0.3;   // 24 px — AI ignores small deviations
+  const aiCenter = rp.y + PH / 2;
+  const diff     = ball.y - aiCenter;
+  if (Math.abs(diff) > deadzone) {
+    rp.y += diff > 0 ? spd : -spd;
+  }
   rp.y = Math.max(0, Math.min(H - PH, rp.y));
 }
 
