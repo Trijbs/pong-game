@@ -105,6 +105,8 @@ canvas {
 
 .modes {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 1.2em;
   margin-bottom: 2em;
 }
@@ -136,6 +138,63 @@ canvas {
   margin-bottom: 2.5em;
 }
 .instr .hi { color: #00a89a; }
+
+.ai-config {
+  display: none;
+  grid-template-columns: repeat(2, minmax(170px, 1fr));
+  gap: 0.8em;
+  width: min(520px, 86%);
+  margin: -0.8em 0 2em;
+}
+.ai-config.on { display: grid; }
+.ai-card {
+  border: 1px solid rgba(0,232,216,0.28);
+  padding: 0.75em;
+  background: rgba(0,232,216,0.04);
+}
+.ai-card-title {
+  color: rgba(0,232,216,0.8);
+  font-size: clamp(0.55rem, 1.4vw, 0.72rem);
+  letter-spacing: 0.18em;
+  margin-bottom: 0.7em;
+}
+.ai-field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.65em;
+}
+.ai-field + .ai-field { margin-top: 0.55em; }
+.ai-field span {
+  color: rgba(0,168,154,0.7);
+  font-size: clamp(0.5rem, 1.2vw, 0.65rem);
+  letter-spacing: 0.12em;
+}
+.ai-field input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  grid-column: 1 / -1;
+  color: #00e8d8;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(0,232,216,0.35);
+  padding: 0.45em 0.55em;
+  font: inherit;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.ai-field input[type="color"] {
+  width: 38px;
+  height: 28px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid rgba(0,232,216,0.35);
+  cursor: pointer;
+}
+.ai-reset {
+  grid-column: 1 / -1;
+  justify-self: center;
+  margin-top: 0.25em;
+}
 
 .pulse {
   font-size: clamp(0.6rem, 1.8vw, 0.85rem);
@@ -183,11 +242,37 @@ canvas {
     <div class="modes">
       <button class="mbtn sel" id="btnS">SINGLE PLAYER</button>
       <button class="mbtn" id="btnM">MULTIPLAYER</button>
+      <button class="mbtn" id="btnA">AI DUEL</button>
     </div>
     <div class="instr" id="instrEl">
       <span class="hi">W / S</span> &nbsp;—&nbsp; MOVE YOUR PADDLE<br>
       AI CONTROLS RIGHT PADDLE<br>
       FIRST TO <span class="hi">7</span> WINS
+    </div>
+    <div class="ai-config" id="aiConfig">
+      <div class="ai-card">
+        <div class="ai-card-title">LEFT AI</div>
+        <label class="ai-field">
+          <span>NAME</span>
+          <input id="leftAiName" type="text" maxlength="12" value="VECTOR">
+        </label>
+        <label class="ai-field">
+          <span>COLOR</span>
+          <input id="leftAiColor" type="color" value="#ff4fd8">
+        </label>
+      </div>
+      <div class="ai-card">
+        <div class="ai-card-title">RIGHT AI</div>
+        <label class="ai-field">
+          <span>NAME</span>
+          <input id="rightAiName" type="text" maxlength="12" value="NOVA">
+        </label>
+        <label class="ai-field">
+          <span>COLOR</span>
+          <input id="rightAiColor" type="color" value="#45f0ff">
+        </label>
+      </div>
+      <button class="mbtn ai-reset" id="resetAiStats" type="button">RESET AI STATS</button>
     </div>
     <div class="pulse">PRESS SPACE TO START</div>
   </div>
@@ -241,6 +326,13 @@ const goScore  = document.getElementById('goScore');
 const instrEl  = document.getElementById('instrEl');
 const btnS = document.getElementById('btnS');
 const btnM = document.getElementById('btnM');
+const btnA = document.getElementById('btnA');
+const aiConfig = document.getElementById('aiConfig');
+const leftAiNameInput = document.getElementById('leftAiName');
+const rightAiNameInput = document.getElementById('rightAiName');
+const leftAiColorInput = document.getElementById('leftAiColor');
+const rightAiColorInput = document.getElementById('rightAiColor');
+const resetAiStatsBtn = document.getElementById('resetAiStats');
 
 // ── Constants ───────────────────────────────────────────────────
 const PW = 12, PH = 80, PMARG = 24;
@@ -250,9 +342,11 @@ const MAX_SPD  = 13;
 const SPD_INC  = 0.35;
 const PSPD     = 7;
 const WIN      = 7;
+const AI_WIN   = 13;
 const TEAL     = '#00e8d8';
 const TEAL2    = '#00b8a9';
 const TRAIL    = 5;
+const AI_STORAGE_KEY = 'pongPhosphorAiDuel';
 
 // ── State ───────────────────────────────────────────────────────
 let gs   = 'start';   // start | playing | paused | gameover
@@ -266,6 +360,8 @@ let floats = [];      // { x,y,vy,life,max }
 let flash  = null;    // { side:'l'|'r', a }
 let lpop   = 0, rpop = 0;   // score digit pop scale extra
 let lhit   = 0, rhit = 0;   // paddle pulse
+let aiSettings = loadAiSettings();
+let aiStats = loadAiStats();
 
 // ── Overlay helper ──────────────────────────────────────────────
 function show(which) {
@@ -273,16 +369,123 @@ function show(which) {
   if (which) which.classList.add('on');
 }
 
+function sanitizeAiName(name, fallback) {
+  const clean = name.trim().toUpperCase().replace(/[^A-Z0-9 ]/g, '').slice(0, 12);
+  return clean || fallback;
+}
+
+function normalizeColor(color, fallback) {
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+}
+
+function defaultAiSettings() {
+  return {
+    left: { name: 'VECTOR', color: '#ff4fd8' },
+    right: { name: 'NOVA', color: '#45f0ff' }
+  };
+}
+
+function defaultAiStats() {
+  return {
+    gamesPlayed: 0,
+    left: { wins: 0, losses: 0, allTimeScore: 0 },
+    right: { wins: 0, losses: 0, allTimeScore: 0 }
+  };
+}
+
+function readAiStorage() {
+  try {
+    return JSON.parse(localStorage.getItem(AI_STORAGE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function writeAiStorage() {
+  localStorage.setItem(AI_STORAGE_KEY, JSON.stringify({ settings: aiSettings, stats: aiStats }));
+}
+
+function loadAiSettings() {
+  const stored = readAiStorage().settings || {};
+  const defaults = defaultAiSettings();
+  return {
+    left: {
+      name: sanitizeAiName(stored.left?.name || defaults.left.name, defaults.left.name),
+      color: normalizeColor(stored.left?.color || defaults.left.color, defaults.left.color)
+    },
+    right: {
+      name: sanitizeAiName(stored.right?.name || defaults.right.name, defaults.right.name),
+      color: normalizeColor(stored.right?.color || defaults.right.color, defaults.right.color)
+    }
+  };
+}
+
+function loadAiStats() {
+  const stored = readAiStorage().stats || {};
+  const defaults = defaultAiStats();
+  return {
+    gamesPlayed: Number.isFinite(stored.gamesPlayed) ? stored.gamesPlayed : defaults.gamesPlayed,
+    left: {
+      wins: Number.isFinite(stored.left?.wins) ? stored.left.wins : defaults.left.wins,
+      losses: Number.isFinite(stored.left?.losses) ? stored.left.losses : defaults.left.losses,
+      allTimeScore: Number.isFinite(stored.left?.allTimeScore) ? stored.left.allTimeScore : defaults.left.allTimeScore
+    },
+    right: {
+      wins: Number.isFinite(stored.right?.wins) ? stored.right.wins : defaults.right.wins,
+      losses: Number.isFinite(stored.right?.losses) ? stored.right.losses : defaults.right.losses,
+      allTimeScore: Number.isFinite(stored.right?.allTimeScore) ? stored.right.allTimeScore : defaults.right.allTimeScore
+    }
+  };
+}
+
+function syncAiControls() {
+  leftAiNameInput.value = aiSettings.left.name;
+  rightAiNameInput.value = aiSettings.right.name;
+  leftAiColorInput.value = aiSettings.left.color;
+  rightAiColorInput.value = aiSettings.right.color;
+}
+
+function updateAiSetting(side, key, value) {
+  const defaults = defaultAiSettings();
+  aiSettings[side][key] = key === 'name'
+    ? sanitizeAiName(value, defaults[side].name)
+    : normalizeColor(value, defaults[side].color);
+  syncAiControls();
+  writeAiStorage();
+  if (gs === 'playing' || gs === 'gameover') draw();
+}
+
+function getWinScore() {
+  return mode === 'ai' ? AI_WIN : WIN;
+}
+
 // ── Mode buttons ────────────────────────────────────────────────
 btnS.addEventListener('click', () => setMode('single'));
 btnM.addEventListener('click', () => setMode('multi'));
+btnA.addEventListener('click', () => setMode('ai'));
+leftAiNameInput.addEventListener('input', () => updateAiSetting('left', 'name', leftAiNameInput.value));
+rightAiNameInput.addEventListener('input', () => updateAiSetting('right', 'name', rightAiNameInput.value));
+leftAiColorInput.addEventListener('input', () => updateAiSetting('left', 'color', leftAiColorInput.value));
+rightAiColorInput.addEventListener('input', () => updateAiSetting('right', 'color', rightAiColorInput.value));
+resetAiStatsBtn.addEventListener('click', () => {
+  aiStats = defaultAiStats();
+  writeAiStorage();
+  if (ball) draw(); else attractDraw();
+});
+
 function setMode(m) {
   mode = m;
   btnS.classList.toggle('sel', m==='single');
   btnM.classList.toggle('sel', m==='multi');
-  instrEl.innerHTML = m === 'single'
-    ? '<span class="hi">W / S</span> &nbsp;—&nbsp; MOVE YOUR PADDLE<br>AI CONTROLS RIGHT PADDLE<br>FIRST TO <span class="hi">7</span> WINS'
-    : '<span class="hi">W / S</span> &nbsp;—&nbsp; LEFT PADDLE &nbsp;&nbsp;&nbsp;&nbsp; <span class="hi">↑ / ↓</span> &nbsp;—&nbsp; RIGHT PADDLE<br>FIRST TO <span class="hi">7</span> WINS';
+  btnA.classList.toggle('sel', m==='ai');
+  aiConfig.classList.toggle('on', m==='ai');
+  if (m === 'single') {
+    instrEl.innerHTML = '<span class="hi">W / S</span> &nbsp;—&nbsp; MOVE YOUR PADDLE<br>AI CONTROLS RIGHT PADDLE<br>FIRST TO <span class="hi">7</span> WINS';
+  } else if (m === 'multi') {
+    instrEl.innerHTML = '<span class="hi">W / S</span> &nbsp;—&nbsp; LEFT PADDLE &nbsp;&nbsp;&nbsp;&nbsp; <span class="hi">↑ / ↓</span> &nbsp;—&nbsp; RIGHT PADDLE<br>FIRST TO <span class="hi">7</span> WINS';
+  } else {
+    instrEl.innerHTML = 'AI CONTROLS BOTH PADDLES<br>CUSTOMIZE NAMES AND COLORS<br>FIRST TO <span class="hi">13</span> WINS';
+  }
 }
 
 // ── Keyboard ────────────────────────────────────────────────────
@@ -336,16 +539,20 @@ function loop() {
 
 // ── Update ───────────────────────────────────────────────────────
 function update() {
-  // Left paddle (player always)
-  if (keys['KeyW']) lp.y = Math.max(0, lp.y - PSPD);
-  if (keys['KeyS']) lp.y = Math.min(H - PH, lp.y + PSPD);
+  // Left paddle
+  if (mode === 'ai') {
+    updateAI(lp, 'l');
+  } else {
+    if (keys['KeyW']) lp.y = Math.max(0, lp.y - PSPD);
+    if (keys['KeyS']) lp.y = Math.min(H - PH, lp.y + PSPD);
+  }
 
   // Right paddle
   if (mode === 'multi') {
     if (keys['ArrowUp'])   rp.y = Math.max(0, rp.y - PSPD);
     if (keys['ArrowDown']) rp.y = Math.min(H - PH, rp.y + PSPD);
   } else {
-    updateAI();
+    updateAI(rp, 'r');
   }
 
   // Trail
@@ -407,17 +614,21 @@ function update() {
   floats.forEach(f => { f.y += f.vy; f.life--; });
 }
 
-function updateAI() {
-  // Speed scales with total score (3.2 → 5.5), capped so player can always win
-  const total    = lp.score + rp.score;
-  const spd      = Math.min(3.2 + total * 0.2, 5.5);
-  const deadzone = PH * 0.3;   // 24 px — AI ignores small deviations
-  const aiCenter = rp.y + PH / 2;
-  const diff     = ball.y - aiCenter;
-  if (Math.abs(diff) > deadzone) {
-    rp.y += diff > 0 ? spd : -spd;
-  }
-  rp.y = Math.max(0, Math.min(H - PH, rp.y));
+function updateAI(paddle, side) {
+  const total = lp.score + rp.score;
+  const sideOffset = side === 'l' ? 0 : Math.PI * 0.8;
+  const spd = Math.min(3.2 + total * 0.2 + (side === 'l' ? 0.25 : 0), 5.8);
+  const towardPaddle = side === 'l' ? ball.vx < 0 : ball.vx > 0;
+  const travel = side === 'l'
+    ? Math.max(0, ball.x - (paddle.x + PW))
+    : Math.max(0, paddle.x - ball.x);
+  const lead = towardPaddle ? Math.min(32, travel / Math.max(1, Math.abs(ball.vx))) : 0;
+  const wobble = Math.sin(Date.now() * 0.003 + sideOffset) * 9;
+  const targetY = towardPaddle ? ball.y + ball.vy * lead + wobble : H / 2 + wobble;
+  const target = Math.max(PH / 2, Math.min(H - PH / 2, targetY)) - PH / 2;
+  const diff = target - paddle.y;
+  if (Math.abs(diff) > spd) paddle.y += diff > 0 ? spd : -spd;
+  paddle.y = Math.max(0, Math.min(H - PH, paddle.y));
 }
 
 function scored(side) {
@@ -425,23 +636,40 @@ function scored(side) {
     lp.score++; lpop = 1;
     floats.push({ x: 80, y: H/2, vy: -1.8, life: 55, max: 55 });
     flash = { side: 'l', a: 0.2 };
-    if (lp.score >= WIN) { gameOver(); return; }
+    if (lp.score >= getWinScore()) { gameOver(); return; }
     newBall(1);
   } else {
     rp.score++; rpop = 1;
     floats.push({ x: W - 80, y: H/2, vy: -1.8, life: 55, max: 55 });
     flash = { side: 'r', a: 0.2 };
-    if (rp.score >= WIN) { gameOver(); return; }
+    if (rp.score >= getWinScore()) { gameOver(); return; }
     newBall(-1);
   }
+}
+
+function recordAiGame(winner) {
+  aiStats.gamesPlayed++;
+  aiStats.left.allTimeScore += lp.score;
+  aiStats.right.allTimeScore += rp.score;
+  if (winner === 'left') {
+    aiStats.left.wins++;
+    aiStats.right.losses++;
+  } else {
+    aiStats.right.wins++;
+    aiStats.left.losses++;
+  }
+  writeAiStorage();
 }
 
 function gameOver() {
   cancelAnimationFrame(raf);
   gs = 'gameover';
-  const lWon = lp.score >= WIN;
+  const lWon = lp.score >= getWinScore();
   if (mode === 'single') {
     goWinner.textContent = lWon ? 'YOU WIN!' : 'COMPUTER WINS';
+  } else if (mode === 'ai') {
+    recordAiGame(lWon ? 'left' : 'right');
+    goWinner.textContent = lWon ? `${aiSettings.left.name} WINS` : `${aiSettings.right.name} WINS`;
   } else {
     goWinner.textContent = lWon ? 'PLAYER 1 WINS' : 'PLAYER 2 WINS';
   }
@@ -460,7 +688,9 @@ function draw() {
   if (flash) {
     ctx.save();
     ctx.globalAlpha = flash.a;
-    ctx.fillStyle = '#00e8d8';
+    ctx.fillStyle = flash.side === 'l' && mode === 'ai' ? aiSettings.left.color :
+                    flash.side === 'r' && mode === 'ai' ? aiSettings.right.color :
+                    TEAL;
     if (flash.side === 'l') ctx.fillRect(0, 0, W/2, H);
     else ctx.fillRect(W/2, 0, W/2, H);
     ctx.restore();
@@ -512,12 +742,16 @@ function draw() {
   ctx.restore();
 
   // Paddles
-  drawPaddle(lp, lhit);
-  drawPaddle(rp, rhit);
+  drawPaddle(lp, lhit, mode === 'ai' ? aiSettings.left.color : TEAL);
+  drawPaddle(rp, rhit, mode === 'ai' ? aiSettings.right.color : TEAL);
 
   // Scores
-  drawScore(W/4,     lp.score, 1 + lpop * 0.55);
-  drawScore(3*W/4,   rp.score, 1 + rpop * 0.55);
+  if (mode === 'ai') {
+    drawAiHud();
+  } else {
+    drawScore(W/4,     lp.score, 1 + lpop * 0.55, TEAL);
+    drawScore(3*W/4,   rp.score, 1 + rpop * 0.55, TEAL);
+  }
 
   // Floating +1 texts
   floats.forEach(f => {
@@ -559,11 +793,11 @@ function lines(ctx, ...segs) {
   segs.forEach(([x1,y1,x2,y2]) => { ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); });
 }
 
-function drawPaddle(p, hit) {
+function drawPaddle(p, hit, color) {
   ctx.save();
   const glow = 14 + hit * 38;
-  ctx.fillStyle = TEAL;
-  ctx.shadowColor = TEAL;
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
   ctx.shadowBlur = glow;
   rrect(ctx, p.x, p.y, PW, PH, 4);
   ctx.fill();
@@ -589,15 +823,51 @@ function rrect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawScore(cx, val, scale) {
+function drawAiHud() {
+  drawScore(74, lp.score, 1 + lpop * 0.42, aiSettings.left.color);
+  drawScore(W - 74, rp.score, 1 + rpop * 0.42, aiSettings.right.color);
+  drawAiPanel(22, 96, 'left', aiSettings.left, aiStats.left);
+  drawAiPanel(W - 22, 96, 'right', aiSettings.right, aiStats.right);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.font = "15px 'Share Tech Mono', monospace";
+  ctx.fillStyle = 'rgba(0,232,216,0.65)';
+  ctx.shadowColor = TEAL;
+  ctx.shadowBlur = 8;
+  ctx.fillText(`GAMES PLAYED ${aiStats.gamesPlayed}`, W / 2, 18);
+  ctx.fillText(`RACE TO ${AI_WIN}`, W / 2, 40);
+  ctx.restore();
+}
+
+function drawAiPanel(x, y, side, settings, stats) {
+  const right = side === 'right';
+  ctx.save();
+  ctx.textAlign = right ? 'right' : 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = settings.color;
+  ctx.shadowColor = settings.color;
+  ctx.shadowBlur = 12;
+  ctx.font = "18px 'Share Tech Mono', monospace";
+  ctx.fillText(settings.name, x, y);
+  ctx.shadowBlur = 4;
+  ctx.font = "13px 'Share Tech Mono', monospace";
+  ctx.fillStyle = 'rgba(170,255,248,0.75)';
+  ctx.fillText(`W ${stats.wins} / L ${stats.losses}`, x, y + 24);
+  ctx.fillText(`ALL TIME ${stats.allTimeScore}`, x, y + 43);
+  ctx.restore();
+}
+
+function drawScore(cx, val, scale, color) {
   ctx.save();
   ctx.translate(cx, 44);
   ctx.scale(scale, scale);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.font = "68px 'Share Tech Mono', monospace";
-  ctx.fillStyle = TEAL;
-  ctx.shadowColor = TEAL;
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
   ctx.shadowBlur = 22;
   ctx.fillText(val, 0, 0);
   ctx.restore();
@@ -613,6 +883,7 @@ function attractDraw() {
   ctx.beginPath(); ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke();
   ctx.setLineDash([]);
 }
+syncAiControls();
 attractDraw();
 </script>
 </body>
