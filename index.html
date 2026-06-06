@@ -280,8 +280,22 @@ class AccountManager {
   getAccount(u)    { const n = u ?? this.getCurrentUser(); return n ? (this._load()[n.toUpperCase()] || null) : null; }
 
   async _sha256(str) {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+    // Use Web Crypto when available (HTTPS / localhost)
+    if (window.crypto && window.crypto.subtle) {
+      try {
+        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+        return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+      } catch(e) { /* fall through */ }
+    }
+    // Pure-JS fallback — good enough for localStorage-only game
+    let h1 = 0x811c9dc5, h2 = 0x9747b28c;
+    for (let i = 0; i < str.length; i++) {
+      h1 = Math.imul(h1 ^ str.charCodeAt(i), 0x01000193) >>> 0;
+      h2 = Math.imul(h2 ^ str.charCodeAt(i), 0x9e3779b9) >>> 0;
+    }
+    // Extend to 64-char hex so it looks like a real hash
+    const mix = [h1, h2, h1 ^ 0xdeadbeef, h2 ^ 0xcafebabe, h1 + h2, h1 * h2, h2 - h1, h1 | h2];
+    return mix.map(n => (n >>> 0).toString(16).padStart(8, '0')).join('');
   }
 
   async register(username, password, confirm) {
