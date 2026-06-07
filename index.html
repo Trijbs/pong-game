@@ -207,7 +207,6 @@ canvas { display: block; }
       <div class="acc-btns"><button class="mbtn" id="accSubmitBtn">LOGIN</button></div>
       <div class="acc-or">— OR —</div>
       <button class="oauth-btn" id="accGoogleBtn">▶ CONTINUE WITH GOOGLE</button>
-      <button class="oauth-btn" id="accAppleBtn">▶ CONTINUE WITH APPLE</button>
       <hr class="acc-sep">
       <button class="acc-toggle" id="accModeToggle">No account yet? Register →</button>
       <button class="mbtn" id="accGuestBtn" style="opacity:0.55;margin-top:0.25em">PLAY AS GUEST</button>
@@ -612,7 +611,6 @@ window.addEventListener('message', e => {
 })();
 
 document.getElementById('accGoogleBtn').addEventListener('click', () => openOAuthPopup('google'));
-document.getElementById('accAppleBtn').addEventListener('click',  () => openOAuthPopup('apple'));
 
 function onLoggedIn(isNew) {
   ovAccount.classList.remove('on');

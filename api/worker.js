@@ -339,66 +339,6 @@ async function handleGoogleCallback(request, env) {
   } catch { return oauthClose({ error: 'GOOGLE ERROR' }); }
 }
 
-// ── Apple ─────────────────────────────────────────────────────
-// Convert Web Crypto DER ECDSA signature → raw R||S (required by ES256/JWT)
-function derToRaw(der) {
-  let i = 2;
-  if (der[1] & 0x80) i += der[1] & 0x7f;
-  i++; const rLen = der[i++]; const r = der.slice(i, i += rLen);
-  i++; const sLen = der[i++]; const s = der.slice(i, i + sLen);
-  const pad = a => { const o = new Uint8Array(32); const src = a[0] === 0 ? a.slice(1) : a; o.set(src.slice(-32), 32 - Math.min(src.length, 32)); return o; };
-  const out = new Uint8Array(64); out.set(pad(r), 0); out.set(pad(s), 32); return out;
-}
-
-async function makeAppleClientSecret(env) {
-  const enc = new TextEncoder();
-  const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
-  const now = Math.floor(Date.now() / 1000);
-  const h = b64u(enc.encode(JSON.stringify({ alg:'ES256', kid:env.APPLE_KEY_ID })));
-  const p = b64u(enc.encode(JSON.stringify({ iss:env.APPLE_TEAM_ID, iat:now, exp:now+15777000, aud:'https://appleid.apple.com', sub:env.APPLE_CLIENT_ID })));
-  const pem = env.APPLE_PRIVATE_KEY.replace(/-----[^-]+-----/g,'').replace(/\s/g,'');
-  const keyBuf = Uint8Array.from(atob(pem), c => c.charCodeAt(0));
-  const key = await crypto.subtle.importKey('pkcs8', keyBuf, { name:'ECDSA', namedCurve:'P-256' }, false, ['sign']);
-  const der = await crypto.subtle.sign({ name:'ECDSA', hash:'SHA-256' }, key, enc.encode(`${h}.${p}`));
-  return `${h}.${p}.${b64u(derToRaw(new Uint8Array(der)))}`;
-}
-
-async function handleAppleInit(request, env) {
-  if (!env.APPLE_CLIENT_ID) return new Response('Apple OAuth not configured', { status: 501 });
-  const p = new URLSearchParams({
-    client_id:     env.APPLE_CLIENT_ID,
-    redirect_uri:  `${WORKER_BASE}/api/auth/apple/callback`,
-    response_type: 'code',
-    response_mode: 'form_post',
-    scope:         'name email',
-  });
-  return Response.redirect(`https://appleid.apple.com/auth/authorize?${p}`, 302);
-}
-
-async function handleAppleCallback(request, env) {
-  const body = await request.formData().catch(() => null);
-  if (!body || body.get('error')) return oauthClose({ error: 'APPLE LOGIN CANCELLED' });
-  const code = body.get('code');
-  if (!code) return oauthClose({ error: 'APPLE LOGIN FAILED' });
-  try {
-    const clientSecret = await makeAppleClientSecret(env);
-    const tr = await fetch('https://appleid.apple.com/auth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ code, client_id: env.APPLE_CLIENT_ID, client_secret: clientSecret, redirect_uri: `${WORKER_BASE}/api/auth/apple/callback`, grant_type: 'authorization_code' }),
-    });
-    const tokens = await tr.json();
-    if (!tokens.id_token) return oauthClose({ error: 'APPLE AUTH FAILED' });
-    // Decode id_token payload (trusted since it came from Apple's token endpoint)
-    const payload = JSON.parse(atob(tokens.id_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
-    const appleSub = payload.sub;
-    const email    = payload.email;
-    let name = null;
-    const userJson = body.get('user');
-    if (userJson) { try { const u = JSON.parse(userJson); name = [u.name?.firstName, u.name?.lastName].filter(Boolean).join(' ') || null; } catch {} }
-    return oauthFindOrCreate(env, email || null, name, appleSub);
-  } catch (e) { console.error(e); return oauthClose({ error: 'APPLE ERROR' }); }
-}
 
 // ═══════════════════════════════════════════════════════════════
 // PHASE 2 — Admin routes (require admin JWT)
@@ -633,8 +573,6 @@ export default {
       if (method==='POST' && path==='/api/admin/auth')             return handleAdminLogin(request, env, origin);
       if (method==='GET'  && path==='/api/auth/google')            return handleGoogleInit(request, env);
       if (method==='GET'  && path==='/api/auth/google/callback')   return handleGoogleCallback(request, env);
-      if (method==='GET'  && path==='/api/auth/apple')             return handleAppleInit(request, env);
-      if (method==='POST' && path==='/api/auth/apple/callback')    return handleAppleCallback(request, env);
 
       // ── Admin routes (JWT required) ──────────────────────────
       if (path.startsWith('/api/admin/')) {
