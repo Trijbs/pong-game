@@ -7,12 +7,15 @@ const ADMIN_TOKEN_TTL = 8 * 60 * 60;       // 8 hours
 
 // ── CORS ──────────────────────────────────────────────────────
 function corsHeaders(env, origin) {
-  if (origin !== env.ALLOWED_ORIGIN) return {};
+  const base = (env.ALLOWED_ORIGIN || 'https://pong.trijbsworld.nl').replace(/^https?:\/\//, '');
+  const originBase = (origin || '').replace(/^https?:\/\//, '');
+  if (originBase !== base) return {};
   return {
-    'Access-Control-Allow-Origin':  env.ALLOWED_ORIGIN,
+    'Access-Control-Allow-Origin':  origin,   // reflect actual origin (handles both http/https)
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age':       '86400',
+    'Vary':                         'Origin',
   };
 }
 function json(data, status = 200, env = {}, origin = '') {
