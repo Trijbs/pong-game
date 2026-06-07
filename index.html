@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src https://pong-api.trjbs.workers.dev https://api.pong.trijbsworld.nl;">
 <title>PONG // PHOSPHOR</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -310,174 +310,100 @@ canvas { display: block; }
 // ACCOUNT MANAGER
 // ═══════════════════════════════════════════════════════════
 class AccountManager {
-  constructor() { this._AK = 'pong_accounts_v2'; this._CK = 'pong_current_v2'; }
-
-  _load()          { try { return JSON.parse(localStorage.getItem(this._AK)) || {}; } catch { return {}; } }
-  _save(a)         { localStorage.setItem(this._AK, JSON.stringify(a)); }
-  getCurrentUser() { return localStorage.getItem(this._CK) || null; }
-  isLoggedIn()     { return !!this.getCurrentUser(); }
-  getAccount(u)    { const n = u ?? this.getCurrentUser(); return n ? (this._load()[n.toUpperCase()] || null) : null; }
-
-  // ── Password hashing (PBKDF2, 100k iterations, per-user salt) ──────────
-  _generateSalt() {
-    return [...crypto.getRandomValues(new Uint8Array(16))]
-      .map(b => b.toString(16).padStart(2, '0')).join('');
+  constructor() {
+    this._TK  = 'pong_jwt';       // JWT token (localStorage — survives page refresh)
+    this._NK  = 'pong_api_user';  // { username, avatar } JSON cache
+    this._API = 'https://pong-api.trjbs.workers.dev'; // switch to api.pong.trijbsworld.nl once DNS resolves
+    this._cache = null;           // In-memory profile cache (cleared on game save / logout)
   }
 
-  async _hashPassword(password, salt) {
-    const enc = new TextEncoder();
-    const key = await crypto.subtle.importKey(
-      'raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']
-    );
-    const bits = await crypto.subtle.deriveBits(
-      { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations: 100000 },
-      key, 256
-    );
-    return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, '0')).join('');
+  // ── HTTP helper ─────────────────────────────────────────────
+  _fetch(path, opts = {}) {
+    const token = this.getToken();
+    return fetch(this._API + path, {
+      ...opts,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...(opts.headers || {}),
+      },
+    });
   }
 
-  // Legacy SHA-256 kept only for migrating pre-existing accounts on first login
-  async _sha256Legacy(str) {
-    if (window.crypto?.subtle) {
-      try {
-        const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-        return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-      } catch(e) { /* fall through */ }
-    }
-    // Weak JS fallback (only reached on non-HTTPS — kept for migration only)
-    let h1 = 0x811c9dc5, h2 = 0x9747b28c;
-    for (let i = 0; i < str.length; i++) {
-      h1 = Math.imul(h1 ^ str.charCodeAt(i), 0x01000193) >>> 0;
-      h2 = Math.imul(h2 ^ str.charCodeAt(i), 0x9e3779b9) >>> 0;
-    }
-    const mix = [h1, h2, h1 ^ 0xdeadbeef, h2 ^ 0xcafebabe, h1 + h2, h1 * h2, h2 - h1, h1 | h2];
-    return mix.map(n => (n >>> 0).toString(16).padStart(8, '0')).join('');
+  // ── Token / identity (all sync, fast) ──────────────────────
+  getToken()  { return localStorage.getItem(this._TK) || null; }
+  _setSession(token, username, avatar) {
+    localStorage.setItem(this._TK, token);
+    localStorage.setItem(this._NK, JSON.stringify({ username, avatar }));
+    this._cache = null;
   }
-
-  // ── Rate limiting (sessionStorage — resets on tab close) ──────────────
-  _rlKey(u)   { return `pong_rl_${u}`; }
-  _rlGet(u)   { try { return JSON.parse(sessionStorage.getItem(this._rlKey(u)) || '{"a":0,"t":0}'); } catch { return {a:0,t:0}; } }
-  _rlSet(u,d) { sessionStorage.setItem(this._rlKey(u), JSON.stringify(d)); }
-
-  _checkRateLimit(u) {
-    const d = this._rlGet(u);
-    if (Date.now() < d.t) {
-      const sec = Math.ceil((d.t - Date.now()) / 1000);
-      throw new Error(`TOO MANY ATTEMPTS — WAIT ${sec}S`);
-    }
+  _clearSession() {
+    localStorage.removeItem(this._TK);
+    localStorage.removeItem(this._NK);
+    this._cache = null;
   }
-  _recordFail(u) {
-    const d = this._rlGet(u);
-    d.a = (d.a || 0) + 1;
-    if (d.a >= 5) { d.t = Date.now() + 30000; d.a = 0; }
-    this._rlSet(u, d);
+  getCurrentUser() {
+    try { return JSON.parse(localStorage.getItem(this._NK) || 'null')?.username || null; } catch { return null; }
   }
-  _clearRateLimit(u) { sessionStorage.removeItem(this._rlKey(u)); }
+  isLoggedIn() { return !!this.getToken(); }
 
+  // ── Register ────────────────────────────────────────────────
   async register(username, email, password, confirm) {
     if (!username || username.length < 2)           throw new Error('USERNAME TOO SHORT (MIN 2)');
     if (!/^[A-Za-z0-9_]+$/.test(username))         throw new Error('LETTERS, NUMBERS AND _ ONLY');
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('ENTER A VALID EMAIL');
     if (!password || password.length < 4)           throw new Error('PASSWORD TOO SHORT (MIN 4)');
     if (password !== confirm)                       throw new Error('PASSWORDS DO NOT MATCH');
-    const accounts = this._load(), uname = username.toUpperCase();
-    if (accounts[uname])                            throw new Error('USERNAME ALREADY TAKEN');
-    const salt = this._generateSalt();
-    const hash = await this._hashPassword(password, salt);
-    accounts[uname] = this._blank(uname, email.toLowerCase(), hash, salt);
-    this._save(accounts); localStorage.setItem(this._CK, uname);
-    return accounts[uname];
+    const res  = await this._fetch('/api/auth/register', { method:'POST', body: JSON.stringify({ username, email, password }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'REGISTRATION FAILED');
+    this._setSession(data.token, data.username, data.avatar);
+    return data;
   }
 
+  // ── Login ────────────────────────────────────────────────────
   async login(username, password) {
     if (!username) throw new Error('ENTER A USERNAME');
     if (!password) throw new Error('ENTER A PASSWORD');
-    const uname = username.toUpperCase();
-    this._checkRateLimit(uname);
-    const accounts = this._load(), acc = accounts[uname];
-    // Generic error — don't reveal whether username exists (prevents enumeration)
-    if (!acc) { this._recordFail(uname); throw new Error('INVALID USERNAME OR PASSWORD'); }
-    let valid = false;
-    if (!acc.salt) {
-      // Legacy account — verify with old SHA-256, then transparently upgrade to PBKDF2
-      const oldHash = await this._sha256Legacy(password);
-      if (oldHash === acc.passwordHash) {
-        const salt = this._generateSalt();
-        acc.salt = salt;
-        acc.passwordHash = await this._hashPassword(password, salt);
-        accounts[uname] = acc; this._save(accounts);
-        valid = true;
-      }
-    } else {
-      valid = (await this._hashPassword(password, acc.salt)) === acc.passwordHash;
-    }
-    if (!valid) { this._recordFail(uname); throw new Error('INVALID USERNAME OR PASSWORD'); }
-    this._clearRateLimit(uname);
-    localStorage.setItem(this._CK, uname);
-    return acc;
+    const res  = await this._fetch('/api/auth/login', { method:'POST', body: JSON.stringify({ username, password }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'LOGIN FAILED');
+    this._setSession(data.token, data.username, data.avatar);
+    return data;
   }
 
-  logout() { localStorage.removeItem(this._CK); }
+  // ── Logout ───────────────────────────────────────────────────
+  logout() { this._clearSession(); }
 
-  _blank(username, email, passwordHash, salt) {
-    const av = ['🕹️','👾','🎮','⚡','🔥','💎'];
-    return {
-      username, email, passwordHash, salt,
-      avatar: av[Math.floor(Math.random() * av.length)],
-      createdAt: Date.now(),
-      stats: { gamesPlayed:0, wins:0, losses:0, totalPlayTimeSec:0, longestRally:0, maxBallSpeed:0, highScore:0 },
-      xp: 0, achievements: {}, streak: 0
-    };
+  // ── Profile (async — fetches from API, short-circuit cached) ─
+  async getAccount() {
+    if (!this.isLoggedIn()) return null;
+    if (this._cache) return this._cache;
+    try {
+      const res = await this._fetch('/api/user/me');
+      if (res.status === 401) { this._clearSession(); return null; }
+      if (!res.ok) return null;
+      this._cache = await res.json();
+      return this._cache;
+    } catch { return null; }
   }
 
-  saveGame({ won, playerScore, aiScore, rallyMax, maxSpeed, playTimeSec, wasTrailing }) {
-    const uname = this.getCurrentUser(); if (!uname) return null;
-    const accounts = this._load(), a = accounts[uname]; if (!a) return null;
-
-    a.stats.gamesPlayed++;
-    if (won) { a.stats.wins++; a.streak = (a.streak || 0) + 1; }
-    else     { a.stats.losses++; a.streak = 0; }
-    a.stats.totalPlayTimeSec += Math.round(playTimeSec);
-    if (rallyMax   > a.stats.longestRally)  a.stats.longestRally  = rallyMax;
-    if (maxSpeed   > a.stats.maxBallSpeed)  a.stats.maxBallSpeed  = +maxSpeed.toFixed(2);
-    if (playerScore > a.stats.highScore)    a.stats.highScore     = playerScore;
-
-    let xp = 20 + playerScore * 5;
-    if (won)           xp += 50;
-    if (won && aiScore === 0) xp += 30;
-    if (rallyMax >= 10) xp += 10;
-    if (rallyMax >= 20) xp += 15;
-
-    const oldLevel = this._level(a.xp);
-    a.xp += xp;
-    const newLevel = this._level(a.xp);
-
-    const newAch = [];
-    const chk = (id, cond) => {
-      if (!a.achievements[id] && cond) {
-        const d = AccountManager.ACHIEVEMENTS.find(x => x.id === id);
-        a.achievements[id] = Date.now();
-        if (d) newAch.push(d);
-      }
-    };
-    chk('first_win',    won && a.stats.wins === 1);
-    chk('win_streak_3', won && a.streak >= 3);
-    chk('win_streak_5', won && a.streak >= 5);
-    chk('shutout',      won && aiScore === 0);
-    chk('rally_10',     rallyMax >= 10);
-    chk('rally_20',     rallyMax >= 20);
-    chk('speed_demon',  maxSpeed >= 12);
-    chk('games_10',     a.stats.gamesPlayed >= 10);
-    chk('games_50',     a.stats.gamesPlayed >= 50);
-    chk('level_5',      newLevel >= 5);
-    chk('level_10',     newLevel >= 10);
-    chk('play_hour',    a.stats.totalPlayTimeSec >= 3600);
-    chk('comeback',     won && wasTrailing);
-
-    this._save(accounts);
-    return { xpGained: xp, leveled: newLevel > oldLevel, newLevel, newAchievements: newAch };
+  // ── Save game (async, fire-and-forget safe) ──────────────────
+  async saveGame({ won, playerScore, aiScore, rallyMax, maxSpeed, playTimeSec, wasTrailing, mode = 'single' }) {
+    if (!this.isLoggedIn()) return null;
+    try {
+      const res = await this._fetch('/api/game/save', {
+        method: 'POST',
+        body: JSON.stringify({ won, playerScore, aiScore, rallyMax, maxSpeed, playTimeSec, wasTrailing, mode }),
+      });
+      if (res.status === 401) { this._clearSession(); return null; }
+      if (!res.ok) return null;
+      this._cache = null; // invalidate so next profile open fetches fresh data
+      return await res.json();
+    } catch { return null; }
   }
 
+  // ── XP utilities (still used by profile overlay) ─────────────
   _level(xp)     { return Math.floor((xp || 0) / 500) + 1; }
   _progress(xp)  { return ((xp || 0) % 500) / 500; }
   _xpInLevel(xp) { return (xp || 0) % 500; }
@@ -666,9 +592,17 @@ document.getElementById('userBarBtn').addEventListener('click', () => {
 });
 
 // Profile overlay
-function openProfile() {
-  const a = acctMgr.getAccount();
-  if (!a) return;
+async function openProfile() {
+  // Show overlay immediately with a loading state
+  show(null);
+  ovProfile.classList.add('on');
+  document.getElementById('profName').textContent = '…';
+  document.getElementById('profLvl').textContent  = '';
+  document.getElementById('achGrid').innerHTML    = '';
+
+  const a = await acctMgr.getAccount();
+  if (!a) { ovProfile.classList.remove('on'); show(ovStart); return; }
+
   document.getElementById('profAvatar').textContent = a.avatar || '🕹️';
   document.getElementById('profName').textContent   = a.username;
   const lv = acctMgr._level(a.xp);
@@ -676,30 +610,32 @@ function openProfile() {
   const pct = (acctMgr._progress(a.xp) * 100).toFixed(1);
   document.getElementById('xpBarFill').style.width  = pct + '%';
   document.getElementById('xpBarLbl').textContent   = `${acctMgr._xpInLevel(a.xp)} / 500 XP TO NEXT LEVEL`;
-  document.getElementById('pGames').textContent    = a.stats.gamesPlayed;
-  document.getElementById('pWins').textContent     = a.stats.wins;
-  document.getElementById('pLosses').textContent   = a.stats.losses;
-  const wr = a.stats.gamesPlayed > 0 ? ((a.stats.wins / a.stats.gamesPlayed) * 100).toFixed(0) + '%' : '—';
-  document.getElementById('pWinRate').textContent  = wr;
-  document.getElementById('pHS').textContent       = a.stats.highScore;
-  document.getElementById('pRally').textContent    = a.stats.longestRally;
-  document.getElementById('pSpeed').textContent    = a.stats.maxBallSpeed;
-  const sec = a.stats.totalPlayTimeSec;
+
+  // API returns snake_case fields directly on the object
+  const gp = a.games_played || 0;
+  document.getElementById('pGames').textContent   = gp;
+  document.getElementById('pWins').textContent    = a.wins    || 0;
+  document.getElementById('pLosses').textContent  = a.losses  || 0;
+  const wr = gp > 0 ? (((a.wins || 0) / gp) * 100).toFixed(0) + '%' : '—';
+  document.getElementById('pWinRate').textContent = wr;
+  document.getElementById('pHS').textContent      = a.high_score      || 0;
+  document.getElementById('pRally').textContent   = a.longest_rally   || 0;
+  document.getElementById('pSpeed').textContent   = a.max_ball_speed  || 0;
+  const sec = a.total_play_time_sec || 0;
   const h   = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
-  document.getElementById('pTime').textContent     = h > 0 ? `${h}h ${m}m` : `${m}m`;
-  document.getElementById('pStreak').textContent   = a.streak || 0;
-  // Achievements
+  document.getElementById('pTime').textContent    = h > 0 ? `${h}h ${m}m` : `${m}m`;
+  document.getElementById('pStreak').textContent  = a.streak || 0;
+
+  // Achievements — API returns { achievement_id: timestamp, … }
   const grid = document.getElementById('achGrid');
   grid.innerHTML = '';
   AccountManager.ACHIEVEMENTS.forEach(def => {
     const el = document.createElement('div');
-    el.className = 'ach-item' + (a.achievements[def.id] ? ' got' : '');
+    el.className = 'ach-item' + (a.achievements?.[def.id] ? ' got' : '');
     el.title = def.desc;
     el.innerHTML = `<span class="ach-ico">${def.icon}</span><span class="ach-lbl">${def.label}</span>`;
     grid.appendChild(el);
   });
-  show(null);                    // hide start/pause/over before revealing profile
-  ovProfile.classList.add('on');
 }
 
 document.getElementById('profBackBtn').addEventListener('click', () => {
@@ -977,7 +913,7 @@ function gameOver() {
     goWinner.textContent = lWon ? 'YOU WIN!' : 'COMPUTER WINS';
     // Save stats and award XP (logged-in players only)
     if (acctMgr.isLoggedIn()) {
-      const result = acctMgr.saveGame({
+      acctMgr.saveGame({
         won: lWon,
         playerScore: lp.score,
         aiScore: rp.score,
@@ -985,17 +921,17 @@ function gameOver() {
         maxSpeed: matchMaxSpeed,
         playTimeSec: (Date.now() - matchStartTime) / 1000,
         wasTrailing: trailingAtSomePoint
-      });
-      if (result) {
+      }).then(result => {
+        if (!result) return;
         goXP.textContent = `+${result.xpGained} XP`;
         if (result.leveled) {
           goLevelUp.classList.add('show');
           showToast(`⬆️ LEVEL UP! YOU ARE NOW LEVEL ${result.newLevel}`, 400);
         }
-        result.newAchievements.forEach((ach, i) => {
+        (result.newAchievements || []).forEach((ach, i) => {
           showToast(`${ach.icon} ACHIEVEMENT: ${ach.label}`, 800 + i * 600);
         });
-      }
+      });
     }
   } else if (mode === 'ai') {
     recordAiGame(lWon ? 'left' : 'right');
