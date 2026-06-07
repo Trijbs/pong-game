@@ -4,6 +4,8 @@
 
 const TOKEN_TTL       = 7 * 24 * 60 * 60; // 7 days
 const ADMIN_TOKEN_TTL = 8 * 60 * 60;       // 8 hours
+const WORKER_BASE     = 'https://pong-api.trjbs.workers.dev';
+const GAME_ORIGIN     = 'https://pong.trijbsworld.nl';
 
 // ── CORS ──────────────────────────────────────────────────────
 function corsHeaders(env, origin) {
@@ -251,6 +253,154 @@ async function handleSaveGame(request, env, origin) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// OAUTH — Google + Apple Sign In
+// ═══════════════════════════════════════════════════════════════
+
+// Returns an HTML page that posts data back to window.opener then closes.
+// Falls back to redirect if opener is unavailable (Safari).
+function oauthClose(data) {
+  const safeData = JSON.stringify(data);
+  return new Response(
+    `<!DOCTYPE html><html><body><script>
+(function(){
+  var d=${safeData};
+  if(window.opener){window.opener.postMessage(Object.assign({type:'oauth_result'},d),'*');setTimeout(function(){window.close();},100);}
+  else{window.location.replace(${JSON.stringify(GAME_ORIGIN + '?oauth_err=no_opener')});}
+})();
+</script></body></html>`,
+    { headers: { 'Content-Type': 'text/html' } }
+  );
+}
+
+// Shared: find-or-create user by email/appleSub, issue JWT, close popup.
+async function oauthFindOrCreate(env, email, displayName, appleSub) {
+  let user = null;
+  if (appleSub) {
+    user = await env.DB.prepare('SELECT id,avatar FROM users WHERE apple_sub=?').bind(appleSub).first();
+  }
+  if (!user && email) {
+    user = await env.DB.prepare('SELECT id,avatar FROM users WHERE email=?').bind(email.toLowerCase()).first();
+    if (user && appleSub) {
+      await env.DB.prepare('UPDATE users SET apple_sub=? WHERE id=?').bind(appleSub, user.id).run();
+    }
+  }
+
+  let isNew = false;
+  if (!user) {
+    isNew = true;
+    const raw = (displayName || email?.split('@')[0] || 'PLAYER')
+      .toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10) || 'PLAYER';
+    let id = raw, n = 2;
+    while (await env.DB.prepare('SELECT id FROM users WHERE id=?').bind(id).first()) {
+      id = raw.slice(0, 8) + n++;
+    }
+    const avatar = ['🕹️','👾','🎮','⚡','🔥','💎'][Math.floor(Math.random() * 6)];
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO users (id,username,email,password_hash,salt,avatar,created_at,apple_sub) VALUES (?,?,?,?,?,?,?,?)')
+        .bind(id, id, email?.toLowerCase() || '', 'OAUTH', '', avatar, Date.now(), appleSub || null),
+      env.DB.prepare('INSERT INTO stats (user_id) VALUES (?)').bind(id),
+    ]);
+    user = { id, avatar };
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const token = await jwtSign({ sub: user.id, iat: now, exp: now + TOKEN_TTL }, env.JWT_SECRET);
+  return oauthClose({ token, username: user.id, avatar: user.avatar, isNew });
+}
+
+// ── Google ────────────────────────────────────────────────────
+async function handleGoogleInit(request, env) {
+  if (!env.GOOGLE_CLIENT_ID) return new Response('Google OAuth not configured', { status: 501 });
+  const p = new URLSearchParams({
+    client_id:     env.GOOGLE_CLIENT_ID,
+    redirect_uri:  `${WORKER_BASE}/api/auth/google/callback`,
+    response_type: 'code',
+    scope:         'openid email profile',
+  });
+  return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${p}`, 302);
+}
+
+async function handleGoogleCallback(request, env) {
+  const url = new URL(request.url);
+  const code = url.searchParams.get('code');
+  if (!code) return oauthClose({ error: 'GOOGLE LOGIN CANCELLED' });
+  try {
+    const tr = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: `${WORKER_BASE}/api/auth/google/callback`, grant_type: 'authorization_code' }),
+    });
+    const { access_token } = await tr.json();
+    if (!access_token) return oauthClose({ error: 'GOOGLE AUTH FAILED' });
+    const ir = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${access_token}` } });
+    const { email, name } = await ir.json();
+    if (!email) return oauthClose({ error: 'COULD NOT GET GOOGLE PROFILE' });
+    return oauthFindOrCreate(env, email, name, null);
+  } catch { return oauthClose({ error: 'GOOGLE ERROR' }); }
+}
+
+// ── Apple ─────────────────────────────────────────────────────
+// Convert Web Crypto DER ECDSA signature → raw R||S (required by ES256/JWT)
+function derToRaw(der) {
+  let i = 2;
+  if (der[1] & 0x80) i += der[1] & 0x7f;
+  i++; const rLen = der[i++]; const r = der.slice(i, i += rLen);
+  i++; const sLen = der[i++]; const s = der.slice(i, i + sLen);
+  const pad = a => { const o = new Uint8Array(32); const src = a[0] === 0 ? a.slice(1) : a; o.set(src.slice(-32), 32 - Math.min(src.length, 32)); return o; };
+  const out = new Uint8Array(64); out.set(pad(r), 0); out.set(pad(s), 32); return out;
+}
+
+async function makeAppleClientSecret(env) {
+  const enc = new TextEncoder();
+  const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const now = Math.floor(Date.now() / 1000);
+  const h = b64u(enc.encode(JSON.stringify({ alg:'ES256', kid:env.APPLE_KEY_ID })));
+  const p = b64u(enc.encode(JSON.stringify({ iss:env.APPLE_TEAM_ID, iat:now, exp:now+15777000, aud:'https://appleid.apple.com', sub:env.APPLE_CLIENT_ID })));
+  const pem = env.APPLE_PRIVATE_KEY.replace(/-----[^-]+-----/g,'').replace(/\s/g,'');
+  const keyBuf = Uint8Array.from(atob(pem), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('pkcs8', keyBuf, { name:'ECDSA', namedCurve:'P-256' }, false, ['sign']);
+  const der = await crypto.subtle.sign({ name:'ECDSA', hash:'SHA-256' }, key, enc.encode(`${h}.${p}`));
+  return `${h}.${p}.${b64u(derToRaw(new Uint8Array(der)))}`;
+}
+
+async function handleAppleInit(request, env) {
+  if (!env.APPLE_CLIENT_ID) return new Response('Apple OAuth not configured', { status: 501 });
+  const p = new URLSearchParams({
+    client_id:     env.APPLE_CLIENT_ID,
+    redirect_uri:  `${WORKER_BASE}/api/auth/apple/callback`,
+    response_type: 'code',
+    response_mode: 'form_post',
+    scope:         'name email',
+  });
+  return Response.redirect(`https://appleid.apple.com/auth/authorize?${p}`, 302);
+}
+
+async function handleAppleCallback(request, env) {
+  const body = await request.formData().catch(() => null);
+  if (!body || body.get('error')) return oauthClose({ error: 'APPLE LOGIN CANCELLED' });
+  const code = body.get('code');
+  if (!code) return oauthClose({ error: 'APPLE LOGIN FAILED' });
+  try {
+    const clientSecret = await makeAppleClientSecret(env);
+    const tr = await fetch('https://appleid.apple.com/auth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code, client_id: env.APPLE_CLIENT_ID, client_secret: clientSecret, redirect_uri: `${WORKER_BASE}/api/auth/apple/callback`, grant_type: 'authorization_code' }),
+    });
+    const tokens = await tr.json();
+    if (!tokens.id_token) return oauthClose({ error: 'APPLE AUTH FAILED' });
+    // Decode id_token payload (trusted since it came from Apple's token endpoint)
+    const payload = JSON.parse(atob(tokens.id_token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    const appleSub = payload.sub;
+    const email    = payload.email;
+    let name = null;
+    const userJson = body.get('user');
+    if (userJson) { try { const u = JSON.parse(userJson); name = [u.name?.firstName, u.name?.lastName].filter(Boolean).join(' ') || null; } catch {} }
+    return oauthFindOrCreate(env, email || null, name, appleSub);
+  } catch (e) { console.error(e); return oauthClose({ error: 'APPLE ERROR' }); }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // PHASE 2 — Admin routes (require admin JWT)
 // ═══════════════════════════════════════════════════════════════
 
@@ -476,11 +626,15 @@ export default {
 
     try {
       // ── Public game routes ───────────────────────────────────
-      if (method==='POST' && path==='/api/auth/register') return handleRegister(request, env, origin);
-      if (method==='POST' && path==='/api/auth/login')    return handleLogin(request, env, origin);
-      if (method==='GET'  && path==='/api/user/me')       return handleGetMe(request, env, origin);
-      if (method==='POST' && path==='/api/game/save')     return handleSaveGame(request, env, origin);
-      if (method==='POST' && path==='/api/admin/auth')    return handleAdminLogin(request, env, origin);
+      if (method==='POST' && path==='/api/auth/register')          return handleRegister(request, env, origin);
+      if (method==='POST' && path==='/api/auth/login')             return handleLogin(request, env, origin);
+      if (method==='GET'  && path==='/api/user/me')                return handleGetMe(request, env, origin);
+      if (method==='POST' && path==='/api/game/save')              return handleSaveGame(request, env, origin);
+      if (method==='POST' && path==='/api/admin/auth')             return handleAdminLogin(request, env, origin);
+      if (method==='GET'  && path==='/api/auth/google')            return handleGoogleInit(request, env);
+      if (method==='GET'  && path==='/api/auth/google/callback')   return handleGoogleCallback(request, env);
+      if (method==='GET'  && path==='/api/auth/apple')             return handleAppleInit(request, env);
+      if (method==='POST' && path==='/api/auth/apple/callback')    return handleAppleCallback(request, env);
 
       // ── Admin routes (JWT required) ──────────────────────────
       if (path.startsWith('/api/admin/')) {

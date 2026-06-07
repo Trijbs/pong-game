@@ -125,6 +125,9 @@ canvas { display: block; }
 .acc-err { font-size: clamp(0.42rem, 1.1vw, 0.58rem); color: #ff6b6b; letter-spacing: 0.1em; min-height: 1em; text-align: center; text-shadow: 0 0 8px rgba(255,107,107,0.35); }
 .acc-btns { display: flex; gap: 0.55em; flex-wrap: wrap; justify-content: center; }
 .acc-sep { width: 100%; border: none; border-top: 1px solid rgba(0,232,216,0.1); margin: 0.2em 0; }
+.acc-or  { font-size: clamp(0.36rem,1vw,0.48rem); color: rgba(0,168,154,0.35); letter-spacing: .3em; text-align: center; }
+.oauth-btn { font-family: 'Share Tech Mono', monospace; font-size: clamp(0.42rem,1.1vw,0.55rem); letter-spacing: .12em; color: rgba(0,232,216,0.65); background: transparent; border: 1px solid rgba(0,232,216,0.18); padding: .38em .8em; cursor: pointer; transition: all .2s; width: 100%; }
+.oauth-btn:hover { border-color: rgba(0,232,216,.4); color: #00e8d8; background: rgba(0,232,216,.04); }
 .acc-toggle { font-family: 'Share Tech Mono', monospace; font-size: clamp(0.42rem, 1.1vw, 0.55rem); color: rgba(0,168,154,0.5); background: none; border: none; border-bottom: 1px solid rgba(0,168,154,0.28); cursor: pointer; padding-bottom: 1px; transition: color 0.2s; }
 .acc-toggle:hover { color: #00a89a; }
 .guest-note { font-size: clamp(0.38rem, 1vw, 0.52rem); color: rgba(0,168,154,0.38); letter-spacing: 0.08em; text-align: center; line-height: 1.7; border-top: 1px solid rgba(0,232,216,0.07); padding-top: 0.5em; max-width: min(290px, 68vw); }
@@ -202,6 +205,9 @@ canvas { display: block; }
       <input class="acc-input" id="accPass2" type="password" placeholder="CONFIRM PASSWORD" maxlength="32" style="display:none">
       <div class="acc-err" id="accErr"></div>
       <div class="acc-btns"><button class="mbtn" id="accSubmitBtn">LOGIN</button></div>
+      <div class="acc-or">— OR —</div>
+      <button class="oauth-btn" id="accGoogleBtn">▶ CONTINUE WITH GOOGLE</button>
+      <button class="oauth-btn" id="accAppleBtn">▶ CONTINUE WITH APPLE</button>
       <hr class="acc-sep">
       <button class="acc-toggle" id="accModeToggle">No account yet? Register →</button>
       <button class="mbtn" id="accGuestBtn" style="opacity:0.55;margin-top:0.25em">PLAY AS GUEST</button>
@@ -572,6 +578,41 @@ document.getElementById('accGuestBtn').addEventListener('click', () => {
   show(ovStart);
   updateUserBar();
 });
+
+// ── OAuth popup (Google / Apple) ─────────────────────────────
+function openOAuthPopup(provider) {
+  document.getElementById('accErr').textContent = '';
+  const popup = window.open(
+    `${acctMgr._API}/api/auth/${provider}`,
+    `${provider}-login`,
+    'width=520,height=640,popup=yes'
+  );
+  if (!popup) {
+    document.getElementById('accErr').textContent = 'ALLOW POPUPS FOR THIS SITE';
+  }
+}
+
+window.addEventListener('message', e => {
+  if (!e.data || e.data.type !== 'oauth_result') return;
+  const { token, username, avatar, isNew, error } = e.data;
+  if (error) { document.getElementById('accErr').textContent = error; return; }
+  if (token && username) {
+    acctMgr._setSession(token, username, avatar);
+    onLoggedIn(!!isNew);
+  }
+});
+
+// Handle redirect fallback (Safari: opener unavailable)
+(function() {
+  const p = new URLSearchParams(location.search);
+  if (p.has('oauth_err')) {
+    history.replaceState(null, '', location.pathname);
+    document.getElementById('accErr').textContent = 'POPUP BLOCKED — ENABLE POPUPS AND TRY AGAIN';
+  }
+})();
+
+document.getElementById('accGoogleBtn').addEventListener('click', () => openOAuthPopup('google'));
+document.getElementById('accAppleBtn').addEventListener('click',  () => openOAuthPopup('apple'));
 
 function onLoggedIn(isNew) {
   ovAccount.classList.remove('on');
